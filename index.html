@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Absensi & Kegiatan Luar Gedung — UPTD Puskesmas Pasir Panjang</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=2">
+</head>
+<body>
+
+<!-- ============ BACKGROUND VIDEO ============ -->
+<div class="bg-video-wrap">
+  <video autoplay muted loop playsinline id="bgVideo">
+    <source src="assets/bg-video.mp4" type="video/mp4">
+  </video>
+  <div class="bg-overlay"></div>
+</div>
+
+<!-- ============ HEADER / KOP ============ -->
+<header class="kop">
+  <img src="assets/logo-kota.png" alt="Logo Kota Kupang" class="kop-logo kop-logo-left">
+  <div class="kop-text">
+    <p class="kop-line1">Dinas Kesehatan Kota Kupang</p>
+    <h1 class="kop-line2">UPTD Puskesmas Pasir Panjang Kota Kupang</h1>
+    <p class="kop-sub">Dashboard Absensi &amp; Kegiatan Luar Gedung Pegawai</p>
+  </div>
+  <img src="assets/logo-puskesmas.png" alt="Logo Puskesmas Pasir Panjang" class="kop-logo kop-logo-right">
+</header>
+
+<!-- ============ NAV TABS ============ -->
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="kalender">📅 Kalender</button>
+  <button class="tab-btn" data-tab="statAbsen">📊 Statistik Kehadiran</button>
+  <button class="tab-btn" data-tab="statKegiatan">🧭 Statistik Kegiatan Luar</button>
+  <button id="rangeAbsenBtn" class="tab-btn admin-only hidden">🗓️ Input Cuti/Sakit Rentang Tanggal</button>
+  <button id="adminToggleBtn" class="tab-btn admin-btn">🔒 Mode Admin</button>
+</nav>
+
+<main class="content">
+
+  <!-- ============ TAB: KALENDER ============ -->
+  <section id="tab-kalender" class="tab-panel active">
+    <div class="glass-panel calendar-panel">
+      <div class="calendar-header">
+        <button id="prevMonthBtn" class="nav-arrow">‹</button>
+        <h2 id="calendarTitle">—</h2>
+        <button id="nextMonthBtn" class="nav-arrow">›</button>
+      </div>
+      <div class="calendar-weekdays">
+        <span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span><span>Min</span>
+      </div>
+      <div id="calendarGrid" class="calendar-grid"></div>
+      <div class="legend">
+        <span class="legend-item"><i class="dot dot-absen"></i> Ada yang tidak hadir</span>
+        <span class="legend-item"><i class="dot dot-kegiatan"></i> Ada kegiatan luar gedung</span>
+        <span class="legend-item"><i class="dot dot-libur"></i> Hari libur</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TAB: STATISTIK KEHADIRAN ============ -->
+  <section id="tab-statAbsen" class="tab-panel">
+    <div class="glass-panel">
+      <div class="panel-header-row">
+        <h2>Persentase Kehadiran Pegawai</h2>
+        <select id="statAbsenBulan" class="select-input"></select>
+      </div>
+      <div id="statAbsenList" class="stat-list"></div>
+      <button id="toggleStatAbsenBtn" class="btn-secondary">Lihat Semua Pegawai</button>
+    </div>
+  </section>
+
+  <!-- ============ TAB: STATISTIK KEGIATAN LUAR ============ -->
+  <section id="tab-statKegiatan" class="tab-panel">
+    <div class="glass-panel">
+      <div class="panel-header-row">
+        <h2>Persentase Kegiatan Luar Gedung</h2>
+        <div class="date-range-picker">
+          <label>Dari <input type="date" id="statKegiatanDari"></label>
+          <label>Sampai <input type="date" id="statKegiatanSampai"></label>
+        </div>
+      </div>
+      <div id="statKegiatanList" class="stat-list"></div>
+      <button id="toggleStatKegiatanBtn" class="btn-secondary">Lihat Semua Pegawai</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ MODAL: DETAIL TANGGAL ============ -->
+<div id="dateModal" class="modal-overlay hidden">
+  <div class="modal-box glass-panel">
+    <div class="modal-header">
+      <h2 id="modalDateTitle">—</h2>
+      <button id="closeModalBtn" class="close-btn">✕</button>
+    </div>
+    <div id="liburBar" class="libur-bar hidden">
+      🎌 <span id="liburLabel"></span>
+    </div>
+    <div class="libur-actions admin-only hidden">
+      <button id="markLiburBtn" class="btn-libur hidden">🎌 Tandai sebagai Hari Libur</button>
+      <button id="unmarkLiburBtn" class="btn-danger small hidden">Batalkan Status Libur</button>
+    </div>
+    <div class="modal-columns">
+      <div class="modal-col">
+        <h3>🚫 Tidak Hadir</h3>
+        <div id="modalAbsenList" class="modal-list"></div>
+        <button id="addAbsenBtn" class="btn-add admin-only hidden">+ Tambah Data Absen</button>
+      </div>
+      <div class="modal-col">
+        <h3>🧭 Kegiatan Luar Gedung</h3>
+        <div id="modalKegiatanList" class="modal-list"></div>
+        <button id="addKegiatanBtn" class="btn-add admin-only hidden">+ Tambah Kegiatan Luar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: FORM ABSEN ============ -->
+<div id="formAbsenModal" class="modal-overlay hidden">
+  <div class="modal-box glass-panel small">
+    <div class="modal-header">
+      <h2>Data Absen</h2>
+      <button class="close-btn js-close-form">✕</button>
+    </div>
+    <form id="formAbsen">
+      <input type="hidden" id="absenRow">
+      <label>Nama Pegawai</label>
+      <select id="absenNama" required></select>
+      <label>Status</label>
+      <select id="absenStatus" required></select>
+      <label>Keterangan (opsional)</label>
+      <input type="text" id="absenKeterangan" placeholder="misal: rawat inap, keperluan keluarga, dst">
+      <div class="form-actions">
+        <button type="button" id="deleteAbsenBtn" class="btn-danger hidden">Hapus</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: FORM ABSEN RENTANG TANGGAL (cuti/sakit panjang) ============ -->
+<div id="formAbsenRangeModal" class="modal-overlay hidden">
+  <div class="modal-box glass-panel small">
+    <div class="modal-header">
+      <h2>Input Cuti/Sakit Rentang Tanggal</h2>
+      <button class="close-btn js-close-form">✕</button>
+    </div>
+    <p class="form-hint">Pakai ini untuk cuti/sakit yang berlangsung beberapa hari sampai beberapa bulan — cukup 1 kali input, semua tanggal di rentang itu otomatis tercatat.</p>
+    <form id="formAbsenRange">
+      <label>Nama Pegawai</label>
+      <select id="rangeNama" required></select>
+      <label>Status</label>
+      <select id="rangeStatus" required></select>
+      <label>Tanggal Mulai</label>
+      <input type="date" id="rangeMulai" required>
+      <label>Tanggal Selesai</label>
+      <input type="date" id="rangeSelesai" required>
+      <label>Keterangan (opsional)</label>
+      <input type="text" id="rangeKeterangan" placeholder="misal: cuti melahirkan, rawat inap RSUD, dst">
+      <p id="rangeSummary" class="form-hint"></p>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Simpan Semua Tanggal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: FORM KEGIATAN ============ -->
+<div id="formKegiatanModal" class="modal-overlay hidden">
+  <div class="modal-box glass-panel small">
+    <div class="modal-header">
+      <h2>Data Kegiatan Luar Gedung</h2>
+      <button class="close-btn js-close-form">✕</button>
+    </div>
+    <form id="formKegiatan">
+      <input type="hidden" id="kegiatanRow">
+      <label>No. Surat Tugas</label>
+      <input type="text" id="kegiatanNoST" placeholder="misal: 094/ST/PKM-PP/VII/2026">
+      <label>Nama Kegiatan</label>
+      <select id="kegiatanNamaSelect"></select>
+      <input type="text" id="kegiatanNamaManual" placeholder="Ketik nama kegiatan..." class="hidden">
+      <label>Lokasi</label>
+      <input type="text" id="kegiatanLokasi" required placeholder="misal: Kelurahan Pasir Panjang">
+
+      <!-- Dipakai saat EDIT data yang sudah ada (1 orang saja) -->
+      <div id="kegiatanNamaSingleWrap" class="hidden">
+        <label>Nama Pegawai</label>
+        <select id="kegiatanNama"></select>
+      </div>
+
+      <!-- Dipakai saat TAMBAH data baru (bisa pilih banyak orang) -->
+      <div id="kegiatanNamaMultiWrap">
+        <label>Nama Pegawai <span class="label-hint">(boleh pilih lebih dari satu)</span></label>
+        <input type="text" id="kegiatanNamaSearch" placeholder="Ketik untuk cari nama...">
+        <div id="kegiatanNamaCheckboxList" class="checkbox-list"></div>
+        <p id="kegiatanNamaCount" class="checklist-count">0 pegawai dipilih</p>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" id="deleteKegiatanBtn" class="btn-danger hidden">Hapus</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: PIN ADMIN ============ -->
+<div id="pinModal" class="modal-overlay hidden">
+  <div class="modal-box glass-panel small">
+    <div class="modal-header">
+      <h2>Masuk Mode Admin</h2>
+      <button class="close-btn js-close-form">✕</button>
+    </div>
+    <form id="formPin">
+      <label>Masukkan PIN Admin</label>
+      <input type="password" id="pinInput" required autocomplete="off">
+      <p id="pinError" class="error-text hidden">PIN salah, coba lagi.</p>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Masuk</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: DETAIL STATISTIK PEGAWAI ============ -->
+<div id="statDetailModal" class="modal-overlay hidden">
+  <div class="modal-box glass-panel small">
+    <div class="modal-header">
+      <h2 id="statDetailTitle">—</h2>
+      <button class="close-btn js-close-form">✕</button>
+    </div>
+    <p id="statDetailPeriode" class="form-hint"></p>
+    <div id="statDetailContent" class="modal-list"></div>
+  </div>
+</div>
+
+<!-- ============ TOAST NOTIFICATION ============ -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- ============ SOCIAL MEDIA FLOATING MENU ============ -->
+<div class="social-menu">
+  <button id="socialToggleBtn" class="social-toggle">
+    <img src="https://cdn.simpleicons.org/googlemessages/FFFFFF" alt="Menu sosial media">
+  </button>
+  <div id="socialLinks" class="social-links hidden">
+    <a id="socialWa" href="#" target="_blank" rel="noopener" title="WhatsApp"><img src="https://cdn.simpleicons.org/whatsapp/25D366" alt="WhatsApp"></a>
+    <a id="socialFb" href="#" target="_blank" rel="noopener" title="Facebook"><img src="https://cdn.simpleicons.org/facebook/1877F2" alt="Facebook"></a>
+    <a id="socialIg" href="#" target="_blank" rel="noopener" title="Instagram"><img src="https://cdn.simpleicons.org/instagram/E4405F" alt="Instagram"></a>
+    <a id="socialTiktok" href="#" target="_blank" rel="noopener" title="TikTok"><img src="https://cdn.simpleicons.org/tiktok/000000" alt="TikTok"></a>
+  </div>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site-footer">
+  <p>Built with HTML • CSS • JavaScript</p>
+  <p>Hosted on GitHub Pages</p>
+  <p>Dashboard Internal — UPTD Puskesmas Pasir Panjang Kota Kupang</p>
+  <p>Klaster 1 Manajemen</p>
+  <p>By Paskah Bire</p>
+  <p>© 2026</p>
+</footer>
+
+<script src="js/config.js?v=2"></script>
+<script src="js/script.js?v=2"></script>
+</body>
+</html>
