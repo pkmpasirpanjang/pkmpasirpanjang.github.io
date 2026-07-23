@@ -424,12 +424,12 @@ h2 {
   .modal-columns { grid-template-columns: 1fr; }
 }
 .modal-col h3 { font-size: 14px; margin: 0 0 10px; font-family: var(--font-display); }
-.modal-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; min-height: 20px; }
+.modal-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; min-height: 20px; }
 .modal-item {
   background: rgba(255,255,255,0.07);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-size: 13px;
   cursor: default;
 }
@@ -437,6 +437,31 @@ h2 {
 .modal-item.editable:hover { background: var(--glass-bg-strong); }
 .modal-item .item-title { font-weight: 600; }
 .modal-item .item-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+/* Kartu kegiatan luar gedung: garis aksen warna di kiri + judul berwarna,
+   warnanya konsisten per nama kegiatan (dihitung dari script.js) supaya
+   kegiatan yang sama selalu terlihat sama walau muncul di tanggal berbeda. */
+.modal-item.kegiatan-card {
+  border-left-width: 4px;
+  border-left-style: solid;
+  padding: 12px 14px;
+}
+.modal-item.kegiatan-card .item-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.modal-item.kegiatan-card .item-sub { font-size: 12px; }
+.st-tag {
+  display: inline-block;
+  font-size: 10px;
+  background: rgba(255,255,255,0.10);
+  border-radius: 5px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  color: var(--text-muted);
+}
+
 .status-chip {
   display: inline-block;
   font-size: 11px;
@@ -448,7 +473,7 @@ h2 {
 }
 .empty-note { color: var(--text-muted); font-size: 13px; font-style: italic; }
 
-.person-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.person-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .person-chip {
   font-size: 12px;
   background: rgba(255,255,255,0.12);

@@ -283,12 +283,20 @@ function addKegiatan(d) {
 function addKegiatanMulti(d) {
   var sheet = getSheet(SHEET_KEGIATAN);
   var namaList = d.NamaList || [];
-  namaList.forEach(function (nama) {
-    var row = sheet.getLastRow() + 1;
-    sheet.getRange(row, 1).setValue(d.NoST || '');
-    writeTanggalAsText(sheet, row, 2, d.Tanggal);
-    sheet.getRange(row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, nama]]);
+  if (namaList.length === 0) return true;
+
+  var startRow = sheet.getLastRow() + 1;
+  var rows = namaList.map(function (nama) {
+    return [d.NoST || '', String(d.Tanggal), d.NamaKegiatan, d.Lokasi, nama];
   });
+
+  // Pastikan kolom Tanggal (kolom ke-2) dibaca sebagai teks, bukan Date,
+  // sebelum data dimasukkan - dilakukan sekali untuk semua baris sekaligus.
+  sheet.getRange(startRow, 2, rows.length, 1).setNumberFormat('@');
+  // Satu panggilan setValues untuk semua baris sekaligus (jauh lebih cepat
+  // daripada menulis baris demi baris satu-satu).
+  sheet.getRange(startRow, 1, rows.length, 5).setValues(rows);
+
   return true;
 }
 

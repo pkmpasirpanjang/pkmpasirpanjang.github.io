@@ -13,6 +13,18 @@ const state = {
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
+// Palet warna untuk kartu kegiatan luar gedung - dipilih otomatis per nama
+// kegiatan (bukan acak setiap render), supaya kegiatan yang sama selalu
+// tampil dengan warna yang sama di mana pun ia muncul.
+const ACTIVITY_COLORS = ["#48B8A6", "#E8AC3E", "#7FB3E8", "#C98FD1", "#8FD1A8", "#E8946B", "#6FC7D8", "#D68FB0"];
+function getActivityColor(namaKegiatan) {
+  let hash = 0;
+  for (let i = 0; i < namaKegiatan.length; i++) {
+    hash = (hash * 31 + namaKegiatan.charCodeAt(i)) >>> 0;
+  }
+  return ACTIVITY_COLORS[hash % ACTIVITY_COLORS.length];
+}
+
 // ============================================================
 // INIT
 // ============================================================
@@ -182,7 +194,13 @@ function openDateModal(key) {
   }
   document.querySelector(".libur-actions").classList.toggle("hidden", !state.isAdmin);
 
-  const absenList = state.data.absensi.filter(a => a.Tanggal === key);
+  const absenList = state.data.absensi
+    .filter(a => a.Tanggal === key)
+    .sort((a, b) => {
+      const idxA = CONFIG.STATUS_LIST.findIndex(s => s.value === a.Status);
+      const idxB = CONFIG.STATUS_LIST.findIndex(s => s.value === b.Status);
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    });
   const kegiatanList = state.data.kegiatanLuar.filter(k => k.Tanggal === key);
 
   const absenEl = document.getElementById("modalAbsenList");
@@ -213,13 +231,15 @@ function openDateModal(key) {
   Object.values(groups).forEach(group => {
     const k = group.info;
     const el = document.createElement("div");
-    el.className = "modal-item";
+    const warna = getActivityColor(k.NamaKegiatan || "");
+    el.className = "modal-item kegiatan-card";
+    el.style.borderLeftColor = warna;
     const chipsHtml = group.items.map(item => `
       <span class="person-chip${state.isAdmin ? " editable" : ""}" data-row="${item._row}">${item.Nama}</span>
     `).join("");
     el.innerHTML = `
-      <div class="item-title">${k.NamaKegiatan || "(Tanpa nama kegiatan)"}</div>
-      <div class="item-sub">📍 ${k.Lokasi}${k.NoST ? " · No.ST: " + k.NoST : ""}</div>
+      <div class="item-title" style="color:${warna}">${k.NamaKegiatan || "(Tanpa nama kegiatan)"}</div>
+      <div class="item-sub">📍 ${k.Lokasi}${k.NoST ? `<span class="st-tag">No.ST: ${k.NoST}</span>` : ""}</div>
       <div class="person-chip-row">${chipsHtml}</div>
     `;
     if (state.isAdmin) {
@@ -294,8 +314,12 @@ function populateEmployeeSelects() {
   const searchInput = document.getElementById("kegiatanNamaSearch");
   if (searchInput && !searchInput.dataset.bound) {
     searchInput.dataset.bound = "1";
+    // Sengaja ambil ulang daftar nama TERBARU dari state setiap kali diketik
+    // (bukan pakai variabel "names" di atas), supaya tidak "macet" ke daftar
+    // kosong kalau listener ini sempat terpasang sebelum data pegawai termuat.
     searchInput.addEventListener("input", () => {
-      renderKegiatanChecklist(names, searchInput.value.trim().toLowerCase());
+      const liveNames = state.data.pegawai.map(p => p.Nama).sort();
+      renderKegiatanChecklist(liveNames, searchInput.value.trim().toLowerCase());
     });
   }
 }
@@ -770,12 +794,14 @@ function openStatDetail(nama, type) {
     if (catatan.length === 0) {
       contentEl.innerHTML = `<p class="empty-note">Tidak ada kegiatan luar gedung tercatat pada periode ini.</p>`;
     } else {
-      contentEl.innerHTML = catatan.map(c => `
-        <div class="modal-item">
-          <div class="item-title">${formatTanggalIndo(c.Tanggal)} — ${c.NamaKegiatan || "(tanpa nama kegiatan)"}</div>
-          <div class="item-sub">📍 ${c.Lokasi}${c.NoST ? " · No.ST: " + c.NoST : ""}</div>
-        </div>
-      `).join("");
+      contentEl.innerHTML = catatan.map(c => {
+        const warna = getActivityColor(c.NamaKegiatan || "");
+        return `
+        <div class="modal-item kegiatan-card" style="border-left-color:${warna}">
+          <div class="item-title" style="color:${warna}">${c.NamaKegiatan || "(tanpa nama kegiatan)"}</div>
+          <div class="item-sub">${formatTanggalIndo(c.Tanggal)} · 📍 ${c.Lokasi}${c.NoST ? `<span class="st-tag">No.ST: ${c.NoST}</span>` : ""}</div>
+        </div>`;
+      }).join("");
     }
   }
 
