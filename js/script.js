@@ -8,7 +8,8 @@ const state = {
   isAdmin: false,
   selectedDate: null,
   statAbsenExpanded: false,
-  statKegiatanExpanded: false
+  statKegiatanExpanded: false,
+  kegiatanSelectedNames: new Set() // pegawai yang dicentang di form "Tambah Kegiatan Luar"
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -327,7 +328,6 @@ function populateEmployeeSelects() {
 function renderKegiatanChecklist(names, filterText) {
   const box = document.getElementById("kegiatanNamaCheckboxList");
   if (!box) return;
-  const previouslyChecked = getSelectedKegiatanNames();
   const filtered = filterText ? names.filter(n => n.toLowerCase().includes(filterText)) : names;
 
   if (filtered.length === 0) {
@@ -337,30 +337,29 @@ function renderKegiatanChecklist(names, filterText) {
 
   box.innerHTML = filtered.map(n => `
     <label class="checkbox-row">
-      <input type="checkbox" value="${n}" ${previouslyChecked.has(n) ? "checked" : ""}>
+      <input type="checkbox" value="${n}" ${state.kegiatanSelectedNames.has(n) ? "checked" : ""}>
       <span>${n}</span>
     </label>
   `).join("");
 
   box.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-    cb.addEventListener("change", updateKegiatanNamaCount);
+    cb.addEventListener("change", () => {
+      if (cb.checked) state.kegiatanSelectedNames.add(cb.value);
+      else state.kegiatanSelectedNames.delete(cb.value);
+      updateKegiatanNamaCount();
+    });
   });
   updateKegiatanNamaCount();
 }
 
 function getSelectedKegiatanNames() {
-  const box = document.getElementById("kegiatanNamaCheckboxList");
-  if (!box) return new Set();
-  return new Set(
-    Array.from(box.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value)
-  );
+  return state.kegiatanSelectedNames;
 }
 
 function updateKegiatanNamaCount() {
   const countEl = document.getElementById("kegiatanNamaCount");
   if (!countEl) return;
-  const count = getSelectedKegiatanNames().size;
-  countEl.textContent = `${count} pegawai dipilih`;
+  countEl.textContent = `${state.kegiatanSelectedNames.size} pegawai dipilih`;
 }
 
 function populateStatusSelect() {
@@ -446,10 +445,10 @@ function openKegiatanForm(existing) {
     // MODE TAMBAH: checklist multi-pilih, kosongkan semua centang
     singleWrap.classList.add("hidden");
     multiWrap.classList.remove("hidden");
+    state.kegiatanSelectedNames = new Set();
     const names = state.data.pegawai.map(p => p.Nama).sort();
     document.getElementById("kegiatanNamaSearch").value = "";
     renderKegiatanChecklist(names, "");
-    document.querySelectorAll("#kegiatanNamaCheckboxList input[type=checkbox]").forEach(cb => cb.checked = false);
     updateKegiatanNamaCount();
   }
 
