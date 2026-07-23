@@ -92,7 +92,7 @@ function doPost(e) {
       default:
         return jsonResponse({ success: false, error: 'Aksi tidak dikenal: ' + action });
     }
-    return jsonResponse({ success: true, result: result, data: getAllData() });
+    return jsonResponse({ success: true, result: result });
   } catch (err) {
     return jsonResponse({ success: false, error: err.message });
   }
@@ -222,7 +222,7 @@ function addLibur(d) {
   var row = sheet.getLastRow() + 1;
   writeTanggalAsText(sheet, row, 1, d.Tanggal);
   sheet.getRange(row, 2).setValue(d.Keterangan || '');
-  return true;
+  return { _row: row, Tanggal: d.Tanggal, Keterangan: d.Keterangan || '', Sumber: 'Manual' };
 }
 
 function addAbsensi(d) {
@@ -230,7 +230,7 @@ function addAbsensi(d) {
   var row = sheet.getLastRow() + 1;
   writeTanggalAsText(sheet, row, 1, d.Tanggal);
   sheet.getRange(row, 2, 1, 3).setValues([[d.Nama, d.Status, d.Keterangan || '']]);
-  return true;
+  return { _row: row, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
 }
 
 // Mencatat 1 pegawai tidak hadir untuk banyak tanggal sekaligus (cuti/sakit panjang).
@@ -253,7 +253,9 @@ function addAbsensiRange(d) {
 
   var startRow = sheet.getLastRow() + 1;
   sheet.getRange(startRow, 1, rows.length, 4).setValues(rows);
-  return { jumlahHari: rows.length };
+  return rows.map(function (r, i) {
+    return { _row: startRow + i, Tanggal: r[0], Nama: r[1], Status: r[2], Keterangan: r[3] };
+  });
 }
 
 // Mengubah teks "yyyy-MM-dd" jadi objek Date (tengah malam, sesuai TIMEZONE puskesmas)
@@ -266,7 +268,7 @@ function updateAbsensi(d) {
   var sheet = getSheet(SHEET_ABSENSI);
   writeTanggalAsText(sheet, d._row, 1, d.Tanggal);
   sheet.getRange(d._row, 2, 1, 3).setValues([[d.Nama, d.Status, d.Keterangan || '']]);
-  return true;
+  return { _row: d._row, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
 }
 
 function addKegiatan(d) {
@@ -297,7 +299,9 @@ function addKegiatanMulti(d) {
   // daripada menulis baris demi baris satu-satu).
   sheet.getRange(startRow, 1, rows.length, 5).setValues(rows);
 
-  return true;
+  return rows.map(function (r, i) {
+    return { _row: startRow + i, NoST: r[0], Tanggal: r[1], NamaKegiatan: r[2], Lokasi: r[3], Nama: r[4] };
+  });
 }
 
 function updateKegiatan(d) {
@@ -305,7 +309,7 @@ function updateKegiatan(d) {
   sheet.getRange(d._row, 1).setValue(d.NoST || '');
   writeTanggalAsText(sheet, d._row, 2, d.Tanggal);
   sheet.getRange(d._row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, d.Nama]]);
-  return true;
+  return { _row: d._row, NoST: d.NoST || '', Tanggal: d.Tanggal, NamaKegiatan: d.NamaKegiatan, Lokasi: d.Lokasi, Nama: d.Nama };
 }
 
 // Set format kolom jadi Plain Text ("@") SEBELUM isi nilainya, supaya

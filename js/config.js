@@ -4,7 +4,7 @@
 // PENTING: setelah Anda deploy Apps Script (lihat apps-script/Code.gs),
 // tempel URL Web App hasil deploy ke sini.
 const CONFIG = {
-  API_URL: "https://script.google.com/macros/s/AKfycby5TZYFYLar7KXBwmYFs2TLykEfhzsV27x1RtOtkWylx6iTogscwfBezXzcf2YRR00/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbwfhztNNrVUxDAsZW7ILcy10AxIvC92prjZrtAIMO2p5duGeVR_3ocGGxsJxs1rf_oW/exec",
 
   NAMA_INSTANSI_BARIS1: "Dinas Kesehatan Kota Kupang",
   NAMA_INSTANSI_BARIS2: "UPTD Puskesmas Pasir Panjang Kota Kupang",

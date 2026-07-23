@@ -512,7 +512,7 @@ async function sendAction(action, data) {
     });
     const json = await res.json();
     if (!json.success) throw new Error(json.error || "Gagal menyimpan.");
-    state.data = json.data;
+    applyLocalPatch(action, data, json.result);
     renderCalendar();
     if (state.selectedDate) openDateModal(state.selectedDate);
     renderStatAbsen();
@@ -520,6 +520,45 @@ async function sendAction(action, data) {
     showToast("Data berhasil disimpan.");
   } catch (err) {
     showToast("Gagal menyimpan: " + err.message, true);
+  }
+}
+
+// Menerapkan hasil simpan langsung ke data yang sudah ada di memori (state.data),
+// supaya tampilan langsung ter-update tanpa perlu minta ulang SEMUA data ke server
+// (itu yang bikin proses simpan terasa lambat sebelumnya).
+function applyLocalPatch(action, sentData, result) {
+  switch (action) {
+    case "addAbsensi":
+      state.data.absensi.push(result);
+      break;
+    case "updateAbsensi": {
+      const idx = state.data.absensi.findIndex(a => a._row === result._row);
+      if (idx !== -1) state.data.absensi[idx] = result; else state.data.absensi.push(result);
+      break;
+    }
+    case "deleteAbsensi":
+      state.data.absensi = state.data.absensi.filter(a => a._row !== sentData._row);
+      break;
+    case "addAbsensiRange":
+      state.data.absensi.push(...result);
+      break;
+    case "addKegiatanMulti":
+      state.data.kegiatanLuar.push(...result);
+      break;
+    case "updateKegiatan": {
+      const idx = state.data.kegiatanLuar.findIndex(k => k._row === result._row);
+      if (idx !== -1) state.data.kegiatanLuar[idx] = result; else state.data.kegiatanLuar.push(result);
+      break;
+    }
+    case "deleteKegiatan":
+      state.data.kegiatanLuar = state.data.kegiatanLuar.filter(k => k._row !== sentData._row);
+      break;
+    case "addLibur":
+      state.data.libur.push(result);
+      break;
+    case "deleteLibur":
+      state.data.libur = state.data.libur.filter(l => l._row !== sentData._row);
+      break;
   }
 }
 
