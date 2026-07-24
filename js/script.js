@@ -35,22 +35,64 @@ document.addEventListener("DOMContentLoaded", () => {
   setupCalendarNav();
   setupModals();
   setupAdmin();
-  loadData();
+
+  // Kalau ada data dari kunjungan sebelumnya tersimpan di perangkat ini,
+  // tampilkan dulu itu SEKARANG JUGA (walau mungkin sedikit basi), supaya
+  // kalender langsung kelihatan tanpa jeda - baru disegarkan diam-diam.
+  const hasCache = loadCachedData();
+  renderCalendar();
+  if (hasCache) {
+    populateEmployeeSelects();
+    populateStatAbsenBulanOptions();
+    renderStatAbsen();
+    renderStatKegiatan();
+  }
+
+  loadData(hasCache);
 });
 
-async function loadData() {
+function loadCachedData() {
+  try {
+    const cached = localStorage.getItem("dashboardDataCache");
+    if (!cached) return false;
+    state.data = JSON.parse(cached);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function saveCachedData() {
+  try {
+    localStorage.setItem("dashboardDataCache", JSON.stringify(state.data));
+  } catch (err) {
+    // Kalau gagal simpan (misal penyimpanan penuh), tidak masalah - abaikan saja.
+  }
+}
+
+async function loadData(isBackgroundRefresh) {
+  const indicator = document.getElementById("dataLoadingIndicator");
+  if (indicator) indicator.classList.remove("hidden");
   try {
     const res = await fetch(`${CONFIG.API_URL}?action=data&_ts=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     state.data = json;
+    saveCachedData();
     renderCalendar();
     populateEmployeeSelects();
     populateStatAbsenBulanOptions();
     renderStatAbsen();
     renderStatKegiatan();
   } catch (err) {
-    showToast("Gagal memuat data. Periksa koneksi atau URL API. (" + err.message + ")", true);
+    // Kalau ini penyegaran di belakang layar dan sebelumnya sempat berhasil
+    // pakai data cache, jangan ganggu dengan pesan error - biarkan saja
+    // dashboard tetap tampil dengan data cache tadi.
+    if (!isBackgroundRefresh) {
+      showToast("Gagal memuat data. Periksa koneksi atau URL API. (" + err.message + ")", true);
+    }
+  } finally {
+    if (indicator) indicator.classList.add("hidden");
   }
 }
 
@@ -655,6 +697,7 @@ function setupRangeAbsenForm() {
 // ============================================================
 function populateStatAbsenBulanOptions() {
   const sel = document.getElementById("statAbsenBulan");
+  const prevValue = sel.value;
   sel.innerHTML = "";
   const now = new Date();
   for (let i = 0; i < 12; i++) {
@@ -663,11 +706,16 @@ function populateStatAbsenBulanOptions() {
     const label = `${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
     sel.innerHTML += `<option value="${value}">${label}</option>`;
   }
-  sel.addEventListener("change", renderStatAbsen);
-  document.getElementById("toggleStatAbsenBtn").addEventListener("click", () => {
-    state.statAbsenExpanded = !state.statAbsenExpanded;
-    renderStatAbsen();
-  });
+  if (prevValue) sel.value = prevValue; // pertahankan bulan yang sedang dipilih user (kalau ada)
+
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = "1";
+    sel.addEventListener("change", renderStatAbsen);
+    document.getElementById("toggleStatAbsenBtn").addEventListener("click", () => {
+      state.statAbsenExpanded = !state.statAbsenExpanded;
+      renderStatAbsen();
+    });
+  }
 }
 
 function countWorkingDaysInMonth(year, month, upToDay) {
