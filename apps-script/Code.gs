@@ -27,6 +27,7 @@ const SHEET_PEGAWAI = 'Pegawai';
 const SHEET_ABSENSI = 'Absensi';
 const SHEET_KEGIATAN = 'KegiatanLuar';
 const SHEET_LIBUR = 'Libur';
+const SHEET_APEL = 'Apel';
 
 // Dipakai tetap (Kupang = WITA) supaya tanggal tidak pernah geser
 // akibat perbedaan zona waktu antara Sheets dan project Apps Script.
@@ -57,40 +58,57 @@ function doPost(e) {
       return jsonResponse({ success: false, error: 'PIN salah. Perubahan tidak disimpan.' });
     }
 
+    // Kunci sementara supaya kalau ada 2 permintaan simpan datang berbarengan
+    // (misal karena tombol Simpan sempat terklik dua kali), keduanya diproses
+    // berurutan satu-satu - bukan bersamaan yang bisa saling tabrakan dan
+    // menyebabkan salah satunya gagal / datanya tertimpa.
+    var lock = LockService.getScriptLock();
+    var dapatKunci = lock.tryLock(25000); // tunggu maksimal 25 detik
+    if (!dapatKunci) {
+      return jsonResponse({ success: false, error: 'Server sedang sibuk memproses permintaan lain, coba simpan lagi sebentar.' });
+    }
+
     var result;
-    switch (action) {
-      case 'addAbsensi':
-        result = addAbsensi(body.data);
-        break;
-      case 'addAbsensiRange':
-        result = addAbsensiRange(body.data);
-        break;
-      case 'updateAbsensi':
-        result = updateAbsensi(body.data);
-        break;
-      case 'deleteAbsensi':
-        result = deleteRow(SHEET_ABSENSI, body.data._row);
-        break;
-      case 'addKegiatan':
-        result = addKegiatan(body.data);
-        break;
-      case 'addKegiatanMulti':
-        result = addKegiatanMulti(body.data);
-        break;
-      case 'updateKegiatan':
-        result = updateKegiatan(body.data);
-        break;
-      case 'deleteKegiatan':
-        result = deleteRow(SHEET_KEGIATAN, body.data._row);
-        break;
-      case 'addLibur':
-        result = addLibur(body.data);
-        break;
-      case 'deleteLibur':
-        result = deleteRow(SHEET_LIBUR, body.data._row);
-        break;
-      default:
-        return jsonResponse({ success: false, error: 'Aksi tidak dikenal: ' + action });
+    try {
+      switch (action) {
+        case 'addAbsensi':
+          result = addAbsensi(body.data);
+          break;
+        case 'addAbsensiRange':
+          result = addAbsensiRange(body.data);
+          break;
+        case 'updateAbsensi':
+          result = updateAbsensi(body.data);
+          break;
+        case 'deleteAbsensi':
+          result = deleteRow(SHEET_ABSENSI, body.data._row);
+          break;
+        case 'addKegiatan':
+          result = addKegiatan(body.data);
+          break;
+        case 'addKegiatanMulti':
+          result = addKegiatanMulti(body.data);
+          break;
+        case 'updateKegiatan':
+          result = updateKegiatan(body.data);
+          break;
+        case 'deleteKegiatan':
+          result = deleteRow(SHEET_KEGIATAN, body.data._row);
+          break;
+        case 'addLibur':
+          result = addLibur(body.data);
+          break;
+        case 'deleteLibur':
+          result = deleteRow(SHEET_LIBUR, body.data._row);
+          break;
+        case 'syncApelHari':
+          result = syncApelHari(body.data);
+          break;
+        default:
+          return jsonResponse({ success: false, error: 'Aksi tidak dikenal: ' + action });
+      }
+    } finally {
+      lock.releaseLock();
     }
     return jsonResponse({ success: true, result: result });
   } catch (err) {
@@ -147,12 +165,26 @@ function getOrCreateLiburSheet() {
   return sheet;
 }
 
+// Sheet "Apel" dibuat otomatis kalau belum ada - tidak perlu Anda buat manual
+// di Spreadsheet. Hanya mencatat pegawai yang TIDAK ikut (sama seperti pola
+// sheet Absensi), supaya tidak perlu mencatat semua pegawai yang hadir tiap hari.
+function getOrCreateApelSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_APEL);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_APEL);
+    sheet.getRange(1, 1, 1, 4).setValues([['Tanggal', 'Nama', 'Sesi', 'Keterangan']]);
+  }
+  return sheet;
+}
+
 function getAllData() {
   return {
     pegawai: sheetToObjects(getSheet(SHEET_PEGAWAI)),
     absensi: sheetToObjects(getSheet(SHEET_ABSENSI)),
     kegiatanLuar: sheetToObjects(getSheet(SHEET_KEGIATAN)),
-    libur: getGabunganLibur()
+    libur: getGabunganLibur(),
+    apel: sheetToObjects(getOrCreateApelSheet())
   };
 }
 
@@ -357,6 +389,36 @@ function perbaikiFormatTanggalLama() {
     });
     range.setNumberFormat('@').setValues(fixed);
   });
+}
+
+// Menyimpan data Apel Pagi & Apel Siang untuk 1 tanggal sekaligus.
+// Caranya: hapus dulu semua catatan lama di tanggal itu, lalu tulis ulang
+// dari daftar nama yang baru dicentang admin. Ini paling aman karena admin
+// selalu mengirim daftar LENGKAP siapa saja yang tidak ikut hari itu
+// (bukan menambah satu-satu), jadi tidak perlu melacak baris mana yang
+// berubah - cukup ganti semua data hari itu dengan versi terbaru.
+function syncApelHari(d) {
+  var sheet = getOrCreateApelSheet();
+  var existing = sheetToObjects(sheet);
+  var rowsToDelete = existing
+    .filter(function (r) { return r.Tanggal === d.Tanggal; })
+    .map(function (r) { return r._row; })
+    .sort(function (a, b) { return b - a; }); // hapus dari bawah ke atas
+  rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
+
+  var rows = [];
+  (d.PagiList || []).forEach(function (nama) { rows.push([d.Tanggal, nama, 'Pagi', '']); });
+  (d.SiangList || []).forEach(function (nama) { rows.push([d.Tanggal, nama, 'Siang', '']); });
+
+  if (rows.length > 0) {
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat('@'); // kolom Tanggal sebagai teks
+    sheet.getRange(startRow, 1, rows.length, 4).setValues(rows);
+  }
+
+  // Kembalikan seluruh data Apel terbaru (dataset ini biasanya kecil,
+  // jadi aman dan lebih simpel daripada melacak nomor baris satu-satu).
+  return sheetToObjects(sheet);
 }
 
 function deleteRow(sheetName, rowNumber) {

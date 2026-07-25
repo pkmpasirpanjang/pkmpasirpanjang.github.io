@@ -33,6 +33,7 @@
 <nav class="tabs">
   <button class="tab-btn active" data-tab="kalender">📅 Kalender</button>
   <button class="tab-btn" data-tab="statAbsen">📊 Statistik Kehadiran</button>
+  <button class="tab-btn" data-tab="statApel">🙋 Statistik Apel</button>
   <button class="tab-btn" data-tab="statKegiatan">🧭 Statistik Kegiatan Luar</button>
   <button id="rangeAbsenBtn" class="tab-btn admin-only hidden">🗓️ Input Cuti/Sakit Rentang Tanggal</button>
   <button id="adminToggleBtn" class="tab-btn admin-btn">🔒 Mode Admin</button>
@@ -70,6 +71,19 @@
       </div>
       <div id="statAbsenList" class="stat-list"></div>
       <button id="toggleStatAbsenBtn" class="btn-secondary">Lihat Semua Pegawai</button>
+    </div>
+  </section>
+
+  <!-- ============ TAB: STATISTIK APEL ============ -->
+  <section id="tab-statApel" class="tab-panel">
+    <div class="glass-panel">
+      <div class="panel-header-row">
+        <h2>Persentase Kehadiran Apel</h2>
+        <select id="statApelBulan" class="select-input"></select>
+      </div>
+      <p class="form-hint">Sakit/Izin/Cuti/Alpa otomatis tidak dihitung rugi. Apel Pagi &amp; Apel Siang dihitung terpisah.</p>
+      <div id="statApelList" class="stat-list"></div>
+      <button id="toggleStatApelBtn" class="btn-secondary">Lihat Semua Pegawai</button>
     </div>
   </section>
 
@@ -115,6 +129,24 @@
         <div id="modalKegiatanList" class="modal-list"></div>
         <button id="addKegiatanBtn" class="btn-add admin-only hidden">+ Tambah Kegiatan Luar</button>
       </div>
+    </div>
+
+    <!-- Input Apel - HANYA terlihat saat Mode Admin aktif, tidak tampil ke pegawai lain -->
+    <div id="apelAdminSection" class="apel-admin-section admin-only hidden">
+      <h3>🙋 Apel (khusus admin)</h3>
+      <div class="apel-columns">
+        <div>
+          <label>Tidak Ikut Apel Pagi</label>
+          <input type="text" id="apelPagiSearch" placeholder="Cari nama...">
+          <div id="apelPagiChecklist" class="checkbox-list"></div>
+        </div>
+        <div>
+          <label>Tidak Ikut Apel Siang</label>
+          <input type="text" id="apelSiangSearch" placeholder="Cari nama...">
+          <div id="apelSiangChecklist" class="checkbox-list"></div>
+        </div>
+      </div>
+      <button id="simpanApelBtn" type="button" class="btn-primary apel-save-btn">Simpan Apel</button>
     </div>
   </div>
 </div>
@@ -259,6 +291,8 @@
   <p>Built with HTML • CSS • JavaScript</p>
   <p>Hosted on GitHub Pages</p>
   <p>Dashboard Internal — UPTD Puskesmas Pasir Panjang Kota Kupang</p>
+  <p>Klaster 1 Manajemen</p>
+  <p>By Paskah Bire</p>
   <p>© 2026</p>
 </footer>
 

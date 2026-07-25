@@ -2,14 +2,17 @@
 // STATE
 // ============================================================
 const state = {
-  data: { pegawai: [], absensi: [], kegiatanLuar: [], libur: [] },
+  data: { pegawai: [], absensi: [], kegiatanLuar: [], libur: [], apel: [] },
   currentYear: new Date().getFullYear(),
   currentMonth: new Date().getMonth(), // 0-11
   isAdmin: false,
   selectedDate: null,
   statAbsenExpanded: false,
   statKegiatanExpanded: false,
-  kegiatanSelectedNames: new Set() // pegawai yang dicentang di form "Tambah Kegiatan Luar"
+  statApelExpanded: false,
+  kegiatanSelectedNames: new Set(), // pegawai yang dicentang di form "Tambah Kegiatan Luar"
+  apelPagiSelected: new Set(),      // pegawai yang dicentang "tidak ikut apel pagi" di tanggal yg sedang dibuka
+  apelSiangSelected: new Set()      // pegawai yang dicentang "tidak ikut apel siang" di tanggal yg sedang dibuka
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -44,7 +47,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (hasCache) {
     populateEmployeeSelects();
     populateStatAbsenBulanOptions();
+    populateStatApelBulanOptions();
     renderStatAbsen();
+    renderStatApel();
     renderStatKegiatan();
   }
 
@@ -82,7 +87,9 @@ async function loadData(isBackgroundRefresh) {
     renderCalendar();
     populateEmployeeSelects();
     populateStatAbsenBulanOptions();
+    populateStatApelBulanOptions();
     renderStatAbsen();
+    renderStatApel();
     renderStatKegiatan();
   } catch (err) {
     // Kalau ini penyegaran di belakang layar dan sebelumnya sempat berhasil
@@ -301,7 +308,30 @@ function openDateModal(key) {
   document.getElementById("addAbsenBtn").classList.toggle("hidden", !state.isAdmin);
   document.getElementById("addKegiatanBtn").classList.toggle("hidden", !state.isAdmin);
 
+  document.getElementById("apelAdminSection").classList.toggle("hidden", !state.isAdmin);
+  if (state.isAdmin) {
+    state.apelPagiSelected = new Set(
+      state.data.apel.filter(a => a.Tanggal === key && a.Sesi === "Pagi").map(a => a.Nama)
+    );
+    state.apelSiangSelected = new Set(
+      state.data.apel.filter(a => a.Tanggal === key && a.Sesi === "Siang").map(a => a.Nama)
+    );
+    document.getElementById("apelPagiSearch").value = "";
+    document.getElementById("apelSiangSearch").value = "";
+    const namesForApel = state.data.pegawai.map(p => p.Nama).sort();
+    renderChecklistGeneric("apelPagiChecklist", namesForApel, "", state.apelPagiSelected);
+    renderChecklistGeneric("apelSiangChecklist", namesForApel, "", state.apelSiangSelected);
+  }
+
   showModal("dateModal");
+}
+
+async function submitApel() {
+  await sendAction("syncApelHari", {
+    Tanggal: state.selectedDate,
+    PagiList: Array.from(state.apelPagiSelected),
+    SiangList: Array.from(state.apelSiangSelected)
+  });
 }
 
 // ============================================================
@@ -333,6 +363,10 @@ function setupModals() {
     if (e.target.value === "__LAINNYA__") { manual.classList.remove("hidden"); manual.required = true; }
     else { manual.classList.add("hidden"); manual.required = false; }
   });
+
+  setupApelChecklistSearch("apelPagiSearch", "apelPagiChecklist", () => state.apelPagiSelected);
+  setupApelChecklistSearch("apelSiangSearch", "apelSiangChecklist", () => state.apelSiangSelected);
+  document.getElementById("simpanApelBtn").addEventListener("click", submitApel);
 }
 
 function showModal(id) { document.getElementById(id).classList.remove("hidden"); }
@@ -392,6 +426,43 @@ function renderKegiatanChecklist(names, filterText) {
     });
   });
   updateKegiatanNamaCount();
+}
+
+// Versi generik dari checklist di atas - dipakai untuk Apel Pagi & Apel Siang
+// (dua kotak centang terpisah, masing-masing punya Set() pilihan sendiri).
+function renderChecklistGeneric(containerId, names, filterText, selectedSet) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  const filtered = filterText ? names.filter(n => n.toLowerCase().includes(filterText)) : names;
+
+  if (filtered.length === 0) {
+    box.innerHTML = `<div class="checkbox-row no-match">Nama tidak ditemukan.</div>`;
+    return;
+  }
+
+  box.innerHTML = filtered.map(n => `
+    <label class="checkbox-row">
+      <input type="checkbox" value="${n}" ${selectedSet.has(n) ? "checked" : ""}>
+      <span>${n}</span>
+    </label>
+  `).join("");
+
+  box.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) selectedSet.add(cb.value);
+      else selectedSet.delete(cb.value);
+    });
+  });
+}
+
+function setupApelChecklistSearch(searchId, containerId, getSelectedSet) {
+  const input = document.getElementById(searchId);
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "1";
+  input.addEventListener("input", () => {
+    const liveNames = state.data.pegawai.map(p => p.Nama).sort();
+    renderChecklistGeneric(containerId, liveNames, input.value.trim().toLowerCase(), getSelectedSet());
+  });
 }
 
 function getSelectedKegiatanNames() {
@@ -543,9 +614,18 @@ async function deleteKegiatan() {
 // ============================================================
 // SEND ACTION TO APPS SCRIPT (POST)
 // ============================================================
+let sedangMenyimpan = false;
+
 async function sendAction(action, data) {
+  if (sedangMenyimpan) {
+    showToast("Masih memproses permintaan sebelumnya, mohon tunggu sebentar...", true);
+    return;
+  }
   const pin = sessionStorage.getItem("adminPin");
   if (!pin) { showToast("Sesi admin berakhir, silakan masuk ulang.", true); return; }
+
+  sedangMenyimpan = true;
+  setSimpanButtonsDisabled(true);
   try {
     const res = await fetch(CONFIG.API_URL, {
       method: "POST",
@@ -558,11 +638,30 @@ async function sendAction(action, data) {
     renderCalendar();
     if (state.selectedDate) openDateModal(state.selectedDate);
     renderStatAbsen();
+    renderStatApel();
     renderStatKegiatan();
     showToast("Data berhasil disimpan.");
   } catch (err) {
     showToast("Gagal menyimpan: " + err.message, true);
+  } finally {
+    sedangMenyimpan = false;
+    setSimpanButtonsDisabled(false);
   }
+}
+
+// Menonaktifkan sementara semua tombol "Simpan" selagi ada proses berjalan,
+// supaya tidak bisa diklik dua kali (penyebab paling sering data gagal
+// tersimpan - dua permintaan simpan yang bertabrakan).
+function setSimpanButtonsDisabled(disabled) {
+  document.querySelectorAll('.btn-primary[type="submit"], #simpanApelBtn').forEach(btn => {
+    if (disabled) {
+      btn.dataset.originalText = btn.textContent;
+      btn.textContent = "Menyimpan...";
+    } else if (btn.dataset.originalText) {
+      btn.textContent = btn.dataset.originalText;
+    }
+    btn.disabled = disabled;
+  });
 }
 
 // Menerapkan hasil simpan langsung ke data yang sudah ada di memori (state.data),
@@ -600,6 +699,9 @@ function applyLocalPatch(action, sentData, result) {
       break;
     case "deleteLibur":
       state.data.libur = state.data.libur.filter(l => l._row !== sentData._row);
+      break;
+    case "syncApelHari":
+      state.data.apel = result; // backend kembalikan seluruh data Apel terbaru
       break;
   }
 }
@@ -760,6 +862,86 @@ function renderStatAbsen() {
 }
 
 // ============================================================
+// STATISTIK APEL (Pagi & Siang terpisah)
+// ============================================================
+function populateStatApelBulanOptions() {
+  const sel = document.getElementById("statApelBulan");
+  const prevValue = sel.value;
+  sel.innerHTML = "";
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+    const label = `${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
+    sel.innerHTML += `<option value="${value}">${label}</option>`;
+  }
+  if (prevValue) sel.value = prevValue;
+
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = "1";
+    sel.addEventListener("change", renderStatApel);
+    document.getElementById("toggleStatApelBtn").addEventListener("click", () => {
+      state.statApelExpanded = !state.statApelExpanded;
+      renderStatApel();
+    });
+  }
+}
+
+function renderStatApel() {
+  const sel = document.getElementById("statApelBulan");
+  if (!sel.value) return; // belum sempat terisi (jalur cache super awal)
+  const [y, m] = sel.value.split("-").map(Number);
+  const year = y, month = m - 1;
+
+  const now = new Date();
+  const isBulanBerjalan = (year === now.getFullYear() && month === now.getMonth());
+  const workingDaysTotal = isBulanBerjalan
+    ? countWorkingDaysInMonth(year, month, now.getDate())
+    : countWorkingDaysInMonth(year, month);
+
+  const prefix = `${year}-${pad2(month + 1)}`;
+
+  const results = state.data.pegawai.map(p => {
+    // Hari yang sudah dikecualikan (Sakit/Izin/Cuti/Alpa) tidak dihitung rugi ke apel
+    const excusedDates = new Set(
+      state.data.absensi
+        .filter(a => a.Nama === p.Nama && a.Tanggal && a.Tanggal.startsWith(prefix))
+        .map(a => a.Tanggal)
+    );
+    const workingDays = Math.max(workingDaysTotal - excusedDates.size, 0);
+
+    const missedPagi = state.data.apel.filter(a =>
+      a.Nama === p.Nama && a.Sesi === "Pagi" && a.Tanggal && a.Tanggal.startsWith(prefix) && !excusedDates.has(a.Tanggal)
+    ).length;
+    const missedSiang = state.data.apel.filter(a =>
+      a.Nama === p.Nama && a.Sesi === "Siang" && a.Tanggal && a.Tanggal.startsWith(prefix) && !excusedDates.has(a.Tanggal)
+    ).length;
+
+    const pctPagi = workingDays > 0 ? Math.round(((workingDays - missedPagi) / workingDays) * 100) : 0;
+    const pctSiang = workingDays > 0 ? Math.round(((workingDays - missedSiang) / workingDays) * 100) : 0;
+    return { nama: p.Nama, pctPagi, pctSiang };
+  }).sort((a, b) => (a.pctPagi + a.pctSiang) - (b.pctPagi + b.pctSiang));
+
+  const el = document.getElementById("statApelList");
+  const shown = state.statApelExpanded ? results : results.slice(0, 10);
+  el.innerHTML = shown.map(r => `
+    <div class="stat-row apel-row clickable" data-nama="${r.nama}">
+      <div class="stat-name">${r.nama}</div>
+      <div class="apel-badges">
+        <span class="apel-badge">Pagi <b>${r.pctPagi}%</b></span>
+        <span class="apel-badge">Siang <b>${r.pctSiang}%</b></span>
+      </div>
+    </div>
+  `).join("");
+  el.querySelectorAll(".stat-row").forEach(row => {
+    row.addEventListener("click", () => openStatDetail(row.dataset.nama, "apel"));
+  });
+
+  document.getElementById("toggleStatApelBtn").textContent =
+    state.statApelExpanded ? "Tampilkan Lebih Sedikit" : "Lihat Semua Pegawai";
+}
+
+// ============================================================
 // STATISTIK KEGIATAN LUAR
 // ============================================================
 function setupStatKegiatanEvents() {
@@ -868,7 +1050,7 @@ function openStatDetail(nama, type) {
         </div>`;
       }).join("");
     }
-  } else {
+  } else if (type === "kegiatan") {
     const dari = document.getElementById("statKegiatanDari").value;
     const sampai = document.getElementById("statKegiatanSampai").value;
     periodeEl.textContent = `Periode: ${formatTanggalIndo(dari)} — ${formatTanggalIndo(sampai)}`;
@@ -889,6 +1071,30 @@ function openStatDetail(nama, type) {
         </div>`;
       }).join("");
     }
+  } else if (type === "apel") {
+    const [y, m] = document.getElementById("statApelBulan").value.split("-").map(Number);
+    const prefix = `${y}-${pad2(m)}`;
+    periodeEl.textContent = `Periode: ${BULAN_ID[m - 1]} ${y}`;
+
+    const missedPagi = state.data.apel
+      .filter(a => a.Nama === nama && a.Sesi === "Pagi" && a.Tanggal && a.Tanggal.startsWith(prefix))
+      .map(a => Number(a.Tanggal.split("-")[2]))
+      .sort((a, b) => a - b);
+    const missedSiang = state.data.apel
+      .filter(a => a.Nama === nama && a.Sesi === "Siang" && a.Tanggal && a.Tanggal.startsWith(prefix))
+      .map(a => Number(a.Tanggal.split("-")[2]))
+      .sort((a, b) => a - b);
+
+    contentEl.innerHTML = `
+      <div class="modal-item">
+        <div class="item-title">🌅 Tidak Ikut Apel Pagi</div>
+        <div class="item-sub">${missedPagi.length ? "Tanggal " + missedPagi.join(", ") : "Tidak ada — ikut penuh bulan ini."}</div>
+      </div>
+      <div class="modal-item">
+        <div class="item-title">🌇 Tidak Ikut Apel Siang</div>
+        <div class="item-sub">${missedSiang.length ? "Tanggal " + missedSiang.join(", ") : "Tidak ada — ikut penuh bulan ini."}</div>
+      </div>
+    `;
   }
 
   showModal("statDetailModal");
