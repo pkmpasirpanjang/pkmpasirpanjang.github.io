@@ -166,6 +166,29 @@ function setupCalendarNav() {
 function pad2(n) { return String(n).padStart(2, "0"); }
 function dateKey(y, m, d) { return `${y}-${pad2(m + 1)}-${pad2(d)}`; }
 
+// Warna persentase: >75% normal, 51-75% kuning (perhatian), <=50% merah (teguran lisan)
+function getPctColorClass(pct) {
+  if (pct <= 50) return "pct-red";
+  if (pct <= 75) return "pct-yellow";
+  return "pct-green";
+}
+
+// Filter pencarian nama untuk daftar statistik (dipakai di 3 panel statistik)
+function applyNameSearchFilter(results, searchInputId) {
+  const input = document.getElementById(searchInputId);
+  const q = input ? input.value.trim().toLowerCase() : "";
+  if (!q) return results;
+  return results.filter(r => r.nama.toLowerCase().includes(q));
+}
+
+// Memasang search box supaya render ulang otomatis saat diketik (sekali pasang saja)
+function setupStatSearchInput(searchInputId, renderFn) {
+  const input = document.getElementById(searchInputId);
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "1";
+  input.addEventListener("input", renderFn);
+}
+
 function renderCalendar() {
   const y = state.currentYear, m = state.currentMonth;
   document.getElementById("calendarTitle").textContent = `${BULAN_ID[m]} ${y}`;
@@ -837,6 +860,7 @@ function populateStatAbsenBulanOptions() {
       state.statAbsenExpanded = !state.statAbsenExpanded;
       renderStatAbsen();
     });
+    setupStatSearchInput("statAbsenSearch", renderStatAbsen);
   }
 }
 
@@ -904,6 +928,7 @@ function populateStatApelBulanOptions() {
       state.statApelExpanded = !state.statApelExpanded;
       renderStatApel();
     });
+    setupStatSearchInput("statApelSearch", renderStatApel);
   }
 }
 
@@ -922,34 +947,39 @@ function renderStatApel() {
   const prefix = `${year}-${pad2(month + 1)}`;
 
   const results = state.data.pegawai.map(p => {
-    // Hari yang sudah dikecualikan (Sakit/Izin/Cuti/Alpa) tidak dihitung rugi ke apel
-    const excusedDates = new Set(
+    // Tanggal Sakit/Izin/Cuti/Alpa OTOMATIS terhitung sebagai "tidak ikut apel"
+    // (baik Pagi maupun Siang) - jadi tidak perlu dicentang manual satu-satu,
+    // dan ikut menurunkan persentase (bukan dikecualikan).
+    const absenDates = new Set(
       state.data.absensi
         .filter(a => a.Nama === p.Nama && a.Tanggal && a.Tanggal.startsWith(prefix))
         .map(a => a.Tanggal)
     );
-    const workingDays = Math.max(workingDaysTotal - excusedDates.size, 0);
 
-    const missedPagi = state.data.apel.filter(a =>
-      a.Nama === p.Nama && a.Sesi === "Pagi" && a.Tanggal && a.Tanggal.startsWith(prefix) && !excusedDates.has(a.Tanggal)
-    ).length;
-    const missedSiang = state.data.apel.filter(a =>
-      a.Nama === p.Nama && a.Sesi === "Siang" && a.Tanggal && a.Tanggal.startsWith(prefix) && !excusedDates.has(a.Tanggal)
-    ).length;
+    const missedPagiDates = new Set(absenDates);
+    state.data.apel
+      .filter(a => a.Nama === p.Nama && a.Sesi === "Pagi" && a.Tanggal && a.Tanggal.startsWith(prefix))
+      .forEach(a => missedPagiDates.add(a.Tanggal));
 
-    const pctPagi = workingDays > 0 ? Math.round(((workingDays - missedPagi) / workingDays) * 100) : 0;
-    const pctSiang = workingDays > 0 ? Math.round(((workingDays - missedSiang) / workingDays) * 100) : 0;
-    return { nama: p.Nama, pctPagi, pctSiang };
+    const missedSiangDates = new Set(absenDates);
+    state.data.apel
+      .filter(a => a.Nama === p.Nama && a.Sesi === "Siang" && a.Tanggal && a.Tanggal.startsWith(prefix))
+      .forEach(a => missedSiangDates.add(a.Tanggal));
+
+    const pctPagi = workingDaysTotal > 0 ? Math.round(((workingDaysTotal - missedPagiDates.size) / workingDaysTotal) * 100) : 0;
+    const pctSiang = workingDaysTotal > 0 ? Math.round(((workingDaysTotal - missedSiangDates.size) / workingDaysTotal) * 100) : 0;
+    return { nama: p.Nama, pctPagi: Math.max(pctPagi, 0), pctSiang: Math.max(pctSiang, 0) };
   }).sort((a, b) => (a.pctPagi + a.pctSiang) - (b.pctPagi + b.pctSiang));
 
   const el = document.getElementById("statApelList");
-  const shown = state.statApelExpanded ? results : results.slice(0, 10);
+  const filtered = applyNameSearchFilter(results, "statApelSearch");
+  const shown = state.statApelExpanded ? filtered : filtered.slice(0, 10);
   el.innerHTML = shown.map(r => `
     <div class="stat-row apel-row clickable" data-nama="${r.nama}">
       <div class="stat-name">${r.nama}</div>
       <div class="apel-badges">
-        <span class="apel-badge">Pagi <b>${r.pctPagi}%</b></span>
-        <span class="apel-badge">Siang <b>${r.pctSiang}%</b></span>
+        <span class="apel-badge">Pagi <b class="${getPctColorClass(r.pctPagi)}">${r.pctPagi}%</b></span>
+        <span class="apel-badge">Siang <b class="${getPctColorClass(r.pctSiang)}">${r.pctSiang}%</b></span>
       </div>
     </div>
   `).join("");
@@ -977,6 +1007,7 @@ function setupStatKegiatanEvents() {
     state.statKegiatanExpanded = !state.statKegiatanExpanded;
     renderStatKegiatan();
   });
+  setupStatSearchInput("statKegiatanSearch", renderStatKegiatan);
 }
 
 function countWorkingDaysInRange(dariKey, sampaiKey) {
@@ -1021,14 +1052,20 @@ function renderStatKegiatan() {
 
 function renderStatList(containerId, results, expanded, type) {
   const el = document.getElementById(containerId);
-  const shown = expanded ? results : results.slice(0, 10);
-  el.innerHTML = shown.map(r => `
+  const searchInputId = type === "absen" ? "statAbsenSearch" : "statKegiatanSearch";
+  const filtered = applyNameSearchFilter(results, searchInputId);
+  const shown = expanded ? filtered : filtered.slice(0, 10);
+  el.innerHTML = shown.map(r => {
+    // Pewarnaan tingkat persentase HANYA untuk Statistik Kehadiran, bukan Kegiatan Luar
+    const pctClass = type === "absen" ? getPctColorClass(r.pct) : "";
+    return `
     <div class="stat-row clickable" data-nama="${r.nama}">
       <div class="stat-name">${r.nama}</div>
       <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${r.pct}%"></div></div>
-      <div class="stat-pct">${r.pct}%</div>
+      <div class="stat-pct ${pctClass}">${r.pct}%</div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   el.querySelectorAll(".stat-row").forEach(row => {
     row.addEventListener("click", () => openStatDetail(row.dataset.nama, type));
@@ -1096,14 +1133,25 @@ function openStatDetail(nama, type) {
     const prefix = `${y}-${pad2(m)}`;
     periodeEl.textContent = `Periode: ${BULAN_ID[m - 1]} ${y}`;
 
-    const missedPagi = state.data.apel
-      .filter(a => a.Nama === nama && a.Sesi === "Pagi" && a.Tanggal && a.Tanggal.startsWith(prefix))
-      .map(a => Number(a.Tanggal.split("-")[2]))
-      .sort((a, b) => a - b);
-    const missedSiang = state.data.apel
-      .filter(a => a.Nama === nama && a.Sesi === "Siang" && a.Tanggal && a.Tanggal.startsWith(prefix))
-      .map(a => Number(a.Tanggal.split("-")[2]))
-      .sort((a, b) => a - b);
+    // Tanggal Sakit/Izin/Cuti/Alpa otomatis digabung (bukan cuma yang dicentang manual)
+    const absenMap = {}; // { "2026-07-01": "Sakit", ... }
+    state.data.absensi
+      .filter(a => a.Nama === nama && a.Tanggal && a.Tanggal.startsWith(prefix))
+      .forEach(a => { absenMap[a.Tanggal] = a.Status; });
+
+    function gabungkanTanggal(sesi) {
+      const set = new Set(Object.keys(absenMap));
+      state.data.apel
+        .filter(a => a.Nama === nama && a.Sesi === sesi && a.Tanggal && a.Tanggal.startsWith(prefix))
+        .forEach(a => set.add(a.Tanggal));
+      return Array.from(set).sort().map(tgl => {
+        const tglNum = Number(tgl.split("-")[2]);
+        return absenMap[tgl] ? `${tglNum} (${absenMap[tgl]})` : `${tglNum}`;
+      });
+    }
+
+    const missedPagi = gabungkanTanggal("Pagi");
+    const missedSiang = gabungkanTanggal("Siang");
 
     contentEl.innerHTML = `
       <div class="modal-item">

@@ -302,6 +302,19 @@ h2 {
   font-family: var(--font-body);
   font-size: 13px;
 }
+.search-input {
+  display: block;
+  width: 100%;
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  color: var(--text-light);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  margin: 14px 0;
+}
+.search-input::placeholder { color: var(--text-muted); }
 .select-input option { color: #06231C; }
 
 .date-range-picker {
@@ -355,6 +368,9 @@ h2 {
   background: linear-gradient(90deg, var(--accent-teal), var(--accent-gold));
 }
 .stat-pct { text-align: right; font-weight: 700; font-family: var(--font-display); }
+.stat-pct.pct-green { color: #6FD6A8; }
+.stat-pct.pct-yellow { color: #F2C94C; }
+.stat-pct.pct-red { color: #FF6B6B; }
 
 .btn-secondary {
   margin-top: 18px;
@@ -695,13 +711,16 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
 .apel-badges { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .apel-badge {
   font-size: 12px;
-  background: rgba(255,255,255,0.10);
+  background: rgba(6, 35, 28, 0.45);
   border: 1px solid var(--glass-border);
   border-radius: 999px;
   padding: 4px 11px;
   white-space: nowrap;
 }
-.apel-badge b { color: var(--accent-teal); font-family: var(--font-display); }
+.apel-badge b { font-family: var(--font-display); font-weight: 800; }
+.apel-badge b.pct-green { color: #6FD6A8; }
+.apel-badge b.pct-yellow { color: #F2C94C; }
+.apel-badge b.pct-red { color: #FF6B6B; }
 
 /* ============================================================
    FOOTER

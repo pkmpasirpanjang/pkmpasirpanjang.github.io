@@ -6,7 +6,7 @@
 <title>Dashboard Absensi & Kegiatan Luar Gedung — UPTD Puskesmas Pasir Panjang</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
 
@@ -73,6 +73,7 @@
         <h2>Persentase Kehadiran Pegawai</h2>
         <select id="statAbsenBulan" class="select-input"></select>
       </div>
+      <input type="text" id="statAbsenSearch" class="search-input" placeholder="🔍 Cari nama pegawai...">
       <div id="statAbsenList" class="stat-list"></div>
       <button id="toggleStatAbsenBtn" class="btn-secondary">Lihat Semua Pegawai</button>
     </div>
@@ -85,7 +86,8 @@
         <h2>Persentase Kehadiran Apel</h2>
         <select id="statApelBulan" class="select-input"></select>
       </div>
-      <p class="form-hint">Sakit/Izin/Cuti/Alpa otomatis tidak dihitung rugi. Apel Pagi &amp; Apel Siang dihitung terpisah.</p>
+      <p class="form-hint">Tanggal Sakit/Izin/Cuti/Alpa otomatis terhitung tidak ikut apel. Apel Pagi &amp; Apel Siang dihitung terpisah.</p>
+      <input type="text" id="statApelSearch" class="search-input" placeholder="🔍 Cari nama pegawai...">
       <div id="statApelList" class="stat-list"></div>
       <button id="toggleStatApelBtn" class="btn-secondary">Lihat Semua Pegawai</button>
     </div>
@@ -101,6 +103,7 @@
           <label>Sampai <input type="date" id="statKegiatanSampai"></label>
         </div>
       </div>
+      <input type="text" id="statKegiatanSearch" class="search-input" placeholder="🔍 Cari nama pegawai...">
       <div id="statKegiatanList" class="stat-list"></div>
       <button id="toggleStatKegiatanBtn" class="btn-secondary">Lihat Semua Pegawai</button>
     </div>
@@ -300,7 +303,7 @@
   <p>© 2026</p>
 </footer>
 
-<script src="js/config.js?v=6"></script>
-<script src="js/script.js?v=6"></script>
+<script src="js/config.js?v=7"></script>
+<script src="js/script.js?v=7"></script>
 </body>
 </html>
