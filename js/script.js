@@ -45,12 +45,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasCache = loadCachedData();
   renderCalendar();
   if (hasCache) {
-    populateEmployeeSelects();
-    populateStatAbsenBulanOptions();
-    populateStatApelBulanOptions();
-    renderStatAbsen();
-    renderStatApel();
-    renderStatKegiatan();
+    renderSectionSafely("Daftar pegawai (dropdown)", populateEmployeeSelects);
+    renderSectionSafely("Pilihan bulan - Kehadiran", populateStatAbsenBulanOptions);
+    renderSectionSafely("Pilihan bulan - Apel", populateStatApelBulanOptions);
+    renderSectionSafely("Statistik Kehadiran", renderStatAbsen);
+    renderSectionSafely("Statistik Apel", renderStatApel);
+    renderSectionSafely("Statistik Kegiatan Luar", renderStatKegiatan);
   }
 
   loadData(hasCache);
@@ -77,6 +77,7 @@ function saveCachedData() {
 
 async function loadData(isBackgroundRefresh) {
   const indicator = document.getElementById("dataLoadingIndicator");
+  const mulai = Date.now();
   if (indicator) indicator.classList.remove("hidden");
   try {
     const res = await fetch(`${CONFIG.API_URL}?action=data&_ts=${Date.now()}`, { cache: "no-store" });
@@ -84,13 +85,6 @@ async function loadData(isBackgroundRefresh) {
     if (json.error) throw new Error(json.error);
     state.data = json;
     saveCachedData();
-    renderCalendar();
-    populateEmployeeSelects();
-    populateStatAbsenBulanOptions();
-    populateStatApelBulanOptions();
-    renderStatAbsen();
-    renderStatApel();
-    renderStatKegiatan();
   } catch (err) {
     // Kalau ini penyegaran di belakang layar dan sebelumnya sempat berhasil
     // pakai data cache, jangan ganggu dengan pesan error - biarkan saja
@@ -98,8 +92,30 @@ async function loadData(isBackgroundRefresh) {
     if (!isBackgroundRefresh) {
       showToast("Gagal memuat data. Periksa koneksi atau URL API. (" + err.message + ")", true);
     }
-  } finally {
     if (indicator) indicator.classList.add("hidden");
+    return; // data gagal diambil - hentikan di sini, tidak perlu lanjut render apa pun
+  }
+  const sisaWaktu = 400 - (Date.now() - mulai);
+  if (sisaWaktu > 0) await new Promise(r => setTimeout(r, sisaWaktu));
+  if (indicator) indicator.classList.add("hidden");
+
+  // Setiap bagian tampilan di-render terpisah dan "dipagari" try-catch masing-masing.
+  // Supaya kalau ada 1 bagian saja yang bermasalah, bagian lain TETAP tampil normal
+  // (tidak semua ikut macet gara-gara 1 bagian error).
+  renderSectionSafely("Kalender", renderCalendar);
+  renderSectionSafely("Daftar pegawai (dropdown)", populateEmployeeSelects);
+  renderSectionSafely("Pilihan bulan - Kehadiran", populateStatAbsenBulanOptions);
+  renderSectionSafely("Pilihan bulan - Apel", populateStatApelBulanOptions);
+  renderSectionSafely("Statistik Kehadiran", renderStatAbsen);
+  renderSectionSafely("Statistik Apel", renderStatApel);
+  renderSectionSafely("Statistik Kegiatan Luar", renderStatKegiatan);
+}
+
+function renderSectionSafely(namaBagian, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`Gagal me-render bagian "${namaBagian}":`, err);
   }
 }
 
@@ -308,19 +324,23 @@ function openDateModal(key) {
   document.getElementById("addAbsenBtn").classList.toggle("hidden", !state.isAdmin);
   document.getElementById("addKegiatanBtn").classList.toggle("hidden", !state.isAdmin);
 
-  document.getElementById("apelAdminSection").classList.toggle("hidden", !state.isAdmin);
-  if (state.isAdmin) {
-    state.apelPagiSelected = new Set(
-      state.data.apel.filter(a => a.Tanggal === key && a.Sesi === "Pagi").map(a => a.Nama)
-    );
-    state.apelSiangSelected = new Set(
-      state.data.apel.filter(a => a.Tanggal === key && a.Sesi === "Siang").map(a => a.Nama)
-    );
-    document.getElementById("apelPagiSearch").value = "";
-    document.getElementById("apelSiangSearch").value = "";
-    const namesForApel = state.data.pegawai.map(p => p.Nama).sort();
-    renderChecklistGeneric("apelPagiChecklist", namesForApel, "", state.apelPagiSelected);
-    renderChecklistGeneric("apelSiangChecklist", namesForApel, "", state.apelSiangSelected);
+  try {
+    document.getElementById("apelAdminSection").classList.toggle("hidden", !state.isAdmin);
+    if (state.isAdmin) {
+      state.apelPagiSelected = new Set(
+        state.data.apel.filter(a => a.Tanggal === key && a.Sesi === "Pagi").map(a => a.Nama)
+      );
+      state.apelSiangSelected = new Set(
+        state.data.apel.filter(a => a.Tanggal === key && a.Sesi === "Siang").map(a => a.Nama)
+      );
+      document.getElementById("apelPagiSearch").value = "";
+      document.getElementById("apelSiangSearch").value = "";
+      const namesForApel = state.data.pegawai.map(p => p.Nama).sort();
+      renderChecklistGeneric("apelPagiChecklist", namesForApel, "", state.apelPagiSelected);
+      renderChecklistGeneric("apelSiangChecklist", namesForApel, "", state.apelSiangSelected);
+    }
+  } catch (err) {
+    console.error("Gagal menyiapkan bagian Apel di pop-up tanggal:", err);
   }
 
   showModal("dateModal");
@@ -635,11 +655,11 @@ async function sendAction(action, data) {
     const json = await res.json();
     if (!json.success) throw new Error(json.error || "Gagal menyimpan.");
     applyLocalPatch(action, data, json.result);
-    renderCalendar();
-    if (state.selectedDate) openDateModal(state.selectedDate);
-    renderStatAbsen();
-    renderStatApel();
-    renderStatKegiatan();
+    renderSectionSafely("Kalender", renderCalendar);
+    if (state.selectedDate) renderSectionSafely("Detail tanggal", () => openDateModal(state.selectedDate));
+    renderSectionSafely("Statistik Kehadiran", renderStatAbsen);
+    renderSectionSafely("Statistik Apel", renderStatApel);
+    renderSectionSafely("Statistik Kegiatan Luar", renderStatKegiatan);
     showToast("Data berhasil disimpan.");
   } catch (err) {
     showToast("Gagal menyimpan: " + err.message, true);
