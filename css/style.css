@@ -713,6 +713,12 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   color: var(--text-muted);
 }
 .site-footer p { margin: 3px 0; }
+.footer-link {
+  color: var(--accent-teal);
+  text-decoration: none;
+  font-weight: 600;
+}
+.footer-link:hover { text-decoration: underline; }
 
 /* ============================================================
    RESPONSIVE
@@ -726,4 +732,25 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   .calendar-grid { gap: 4px; }
   .cal-cell { padding: 3px 2px; border-radius: 7px; }
   .cal-badge-count { font-size: 9px; padding: 1px 4px; }
+
+  /* 4 tombol tab tampilan dipaksa jadi grid 2 kolom tetap - selalu rapi
+     2x2, tidak lagi wrap acak (2+1+1) tergantung panjang tulisannya. */
+  .tabs-row.tabs-view {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .tabs-row.tabs-view .tab-btn {
+    width: 100%;
+    padding: 10px 8px;
+    font-size: 12px;
+    white-space: normal;
+    line-height: 1.3;
+  }
+  .tabs-row.tabs-admin {
+    width: 100%;
+    flex-direction: column;
+  }
+  .tabs-row.tabs-admin .tab-btn { width: 100%; }
 }
