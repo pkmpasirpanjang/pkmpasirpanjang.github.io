@@ -1080,6 +1080,13 @@ function openStatDetail(nama, type) {
   const contentEl = document.getElementById("statDetailContent");
   const periodeEl = document.getElementById("statDetailPeriode");
 
+  // Efek transisi beda-beda tergantung asal statistiknya:
+  // Kehadiran = slide-up, Apel = flip, Kegiatan Luar = bounce.
+  const detailBox = document.querySelector("#statDetailModal .modal-box");
+  detailBox.classList.remove("effect-slideup", "effect-flip", "effect-bounce");
+  const efekMap = { absen: "effect-slideup", apel: "effect-flip", kegiatan: "effect-bounce" };
+  detailBox.classList.add(efekMap[type] || "effect-slideup");
+
   if (type === "absen") {
     const [y, m] = document.getElementById("statAbsenBulan").value.split("-").map(Number);
     const prefix = `${y}-${pad2(m)}`;
