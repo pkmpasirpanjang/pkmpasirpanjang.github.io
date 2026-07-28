@@ -170,7 +170,13 @@ function dateKey(y, m, d) { return `${y}-${pad2(m + 1)}-${pad2(d)}`; }
 function getPctColorClass(pct) {
   if (pct <= 50) return "pct-red";
   if (pct <= 75) return "pct-yellow";
-  return "pct-green";
+  if (pct < 100) return "pct-green-light";
+  return "pct-green-full";
+}
+
+// Untuk 100% diberi label bintang supaya jelas beda dari 75-99% (yang sama-sama hijau)
+function formatPctLabel(pct) {
+  return pct >= 100 ? "⭐100%" : `${pct}%`;
 }
 
 // Filter pencarian nama untuk daftar statistik (dipakai di 3 panel statistik)
@@ -978,8 +984,8 @@ function renderStatApel() {
     <div class="stat-row apel-row clickable" data-nama="${r.nama}">
       <div class="stat-name">${r.nama}</div>
       <div class="apel-badges">
-        <span class="apel-badge">Pagi <b class="${getPctColorClass(r.pctPagi)}">${r.pctPagi}%</b></span>
-        <span class="apel-badge">Siang <b class="${getPctColorClass(r.pctSiang)}">${r.pctSiang}%</b></span>
+        <span class="apel-badge">Pagi <b class="${getPctColorClass(r.pctPagi)}">${formatPctLabel(r.pctPagi)}</b></span>
+        <span class="apel-badge">Siang <b class="${getPctColorClass(r.pctSiang)}">${formatPctLabel(r.pctSiang)}</b></span>
       </div>
     </div>
   `).join("");
@@ -1058,11 +1064,12 @@ function renderStatList(containerId, results, expanded, type) {
   el.innerHTML = shown.map(r => {
     // Pewarnaan tingkat persentase HANYA untuk Statistik Kehadiran, bukan Kegiatan Luar
     const pctClass = type === "absen" ? getPctColorClass(r.pct) : "";
+    const pctLabel = type === "absen" ? formatPctLabel(r.pct) : `${r.pct}%`;
     return `
     <div class="stat-row clickable" data-nama="${r.nama}">
       <div class="stat-name">${r.nama}</div>
       <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${r.pct}%"></div></div>
-      <div class="stat-pct ${pctClass}">${r.pct}%</div>
+      <div class="stat-pct ${pctClass}">${pctLabel}</div>
     </div>
   `;
   }).join("");

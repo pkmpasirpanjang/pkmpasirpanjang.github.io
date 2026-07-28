@@ -172,10 +172,10 @@ html, body {
 
 /* Setiap tab punya arah "masuk" sendiri, supaya terasa seperti berpindah
    halaman ke arah tertentu, bukan cuma ganti konten tiba-tiba. */
-#tab-kalender.active { animation: fadeInSoft 320ms ease both; }
-#tab-statAbsen.active { animation: slideInFromRight 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-#tab-statApel.active { animation: slideInFromLeft 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-#tab-statKegiatan.active { animation: slideInFromBottom 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+#tab-kalender.active { animation: fadeInSoft 550ms ease both; }
+#tab-statAbsen.active { animation: slideInFromRight 600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+#tab-statApel.active { animation: slideInFromLeft 600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+#tab-statKegiatan.active { animation: slideInFromBottom 600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 @keyframes fadeInSoft {
   from { opacity: 0; transform: translateY(6px); }
@@ -392,7 +392,8 @@ h2 {
   background: linear-gradient(90deg, var(--accent-teal), var(--accent-gold));
 }
 .stat-pct { text-align: right; font-weight: 700; font-family: var(--font-display); }
-.stat-pct.pct-green { color: #6FD6A8; }
+.stat-pct.pct-green-light { color: #9BE8B9; }
+.stat-pct.pct-green-full { color: #2ECC71; font-weight: 800; }
 .stat-pct.pct-yellow { color: #F2C94C; }
 .stat-pct.pct-red { color: #FF6B6B; }
 
@@ -422,7 +423,7 @@ h2 {
   justify-content: center;
   z-index: 100;
   padding: 16px;
-  animation: overlayFadeIn 220ms ease both;
+  animation: overlayFadeIn 400ms ease both;
 }
 .modal-overlay.hidden { display: none; }
 
@@ -436,7 +437,7 @@ h2 {
   max-width: 640px;
   max-height: 88vh;
   overflow-y: auto;
-  animation: modalScaleIn 240ms ease both; /* default untuk form-form sederhana (PIN, tambah data, dst) */
+  animation: modalScaleIn 450ms ease both; /* default untuk form-form sederhana (PIN, tambah data, dst) */
 }
 .modal-box.small { max-width: 420px; }
 
@@ -444,7 +445,7 @@ h2 {
    Selector #dateModal .modal-box lebih spesifik dari .modal-box biasa
    di atas, jadi otomatis menang tanpa perlu aturan "pembatal" apa pun. */
 #dateModal .modal-box {
-  animation: modalScaleIn 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: modalScaleIn 550ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes modalScaleIn {
   from { opacity: 0; transform: scale(0.92); }
@@ -453,7 +454,7 @@ h2 {
 
 /* Detail per pegawai (statistik) - efek beda tergantung dari statistik mana asalnya */
 #statDetailModal .modal-box.effect-slideup {
-  animation: detailSlideUp 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: detailSlideUp 550ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes detailSlideUp {
   from { opacity: 0; transform: translateY(40px); }
@@ -461,7 +462,7 @@ h2 {
 }
 
 #statDetailModal .modal-box.effect-flip {
-  animation: detailFlip 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: detailFlip 700ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
   transform-style: preserve-3d;
 }
 @keyframes detailFlip {
@@ -470,7 +471,7 @@ h2 {
 }
 
 #statDetailModal .modal-box.effect-bounce {
-  animation: detailBounce 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: detailBounce 700ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 @keyframes detailBounce {
   0% { opacity: 0; transform: scale(0.7); }
@@ -534,14 +535,14 @@ h2 {
   padding: 10px 12px;
   font-size: 13px;
   cursor: default;
-  animation: itemFadeIn 260ms ease both;
+  animation: itemFadeIn 450ms ease both;
 }
 .modal-item:nth-child(1) { animation-delay: 0ms; }
-.modal-item:nth-child(2) { animation-delay: 40ms; }
-.modal-item:nth-child(3) { animation-delay: 80ms; }
-.modal-item:nth-child(4) { animation-delay: 120ms; }
-.modal-item:nth-child(5) { animation-delay: 160ms; }
-.modal-item:nth-child(n+6) { animation-delay: 200ms; }
+.modal-item:nth-child(2) { animation-delay: 60ms; }
+.modal-item:nth-child(3) { animation-delay: 120ms; }
+.modal-item:nth-child(4) { animation-delay: 180ms; }
+.modal-item:nth-child(5) { animation-delay: 240ms; }
+.modal-item:nth-child(n+6) { animation-delay: 300ms; }
 @keyframes itemFadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -798,7 +799,8 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   white-space: nowrap;
 }
 .apel-badge b { font-family: var(--font-display); font-weight: 800; }
-.apel-badge b.pct-green { color: #6FD6A8; }
+.apel-badge b.pct-green-light { color: #9BE8B9; }
+.apel-badge b.pct-green-full { color: #2ECC71; }
 .apel-badge b.pct-yellow { color: #F2C94C; }
 .apel-badge b.pct-red { color: #FF6B6B; }
 
