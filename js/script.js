@@ -176,7 +176,9 @@ function getPctColorClass(pct) {
 
 // Untuk 100% diberi label bintang supaya jelas beda dari 75-99% (yang sama-sama hijau)
 function formatPctLabel(pct) {
-  return pct >= 100 ? "⭐100%" : `${pct}%`;
+  if (pct >= 100) return "⭐100%";
+  if (pct <= 50) return `😢${pct}%`;
+  return `${pct}%`;
 }
 
 // Filter pencarian nama untuk daftar statistik (dipakai di 3 panel statistik)
@@ -420,6 +422,24 @@ function setupModals() {
 
 function showModal(id) { document.getElementById(id).classList.remove("hidden"); }
 function hideModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+// Menampilkan emoji besar sekilas (1 detik) di atas pop-up detail statistik,
+// sebagai reaksi otomatis: 😢 untuk persentase ≤50%, 👏 untuk 100% penuh.
+let reactionTimer;
+function triggerStatReaction(emoji) {
+  const overlay = document.getElementById("statReactionOverlay");
+  if (!overlay) return;
+  const emojiEl = document.getElementById("statReactionEmoji");
+  emojiEl.textContent = emoji;
+  overlay.classList.remove("hidden", "show");
+  void overlay.offsetWidth; // paksa reflow supaya animasi bisa mengulang kalau diklik berturut-turut
+  overlay.classList.add("show");
+  clearTimeout(reactionTimer);
+  reactionTimer = setTimeout(() => {
+    overlay.classList.add("hidden");
+    overlay.classList.remove("show");
+  }, 1000);
+}
 
 function populateEmployeeSelects() {
   const names = state.data.pegawai.map(p => p.Nama).sort();
@@ -888,23 +908,32 @@ function renderStatAbsen() {
 
   const now = new Date();
   const isBulanBerjalan = (year === now.getFullYear() && month === now.getMonth());
+  const jumlahHariBulan = new Date(year, month + 1, 0).getDate();
+  const periodeMulai = `${year}-${pad2(month + 1)}-01`;
   // Untuk bulan yang sedang berjalan, hitung hari kerja hanya sampai HARI INI —
   // supaya hari-hari yang belum terjadi tidak dianggap "tidak hadir".
-  const workingDays = isBulanBerjalan
-    ? countWorkingDaysInMonth(year, month, now.getDate())
-    : countWorkingDaysInMonth(year, month);
+  const periodeSelesai = isBulanBerjalan
+    ? `${year}-${pad2(month + 1)}-${pad2(now.getDate())}`
+    : `${year}-${pad2(month + 1)}-${pad2(jumlahHariBulan)}`;
 
   const prefix = `${year}-${pad2(month + 1)}`;
   const liburSet = getLiburDatesSet();
 
   const results = state.data.pegawai.map(p => {
+    // Pegawai rotasi/sementara: kalau belum mulai kerja atau sudah selesai
+    // sebelum bulan ini, kecualikan total dari daftar (bukan dianggap 100%).
+    const rentang = hitungRentangAktifPegawai(p, periodeMulai, periodeSelesai);
+    if (!rentang) return null;
+
+    const workingDays = countWorkingDaysInRange(rentang.mulai, rentang.selesai);
     const tidakHadir = state.data.absensi.filter(a =>
-      a.Nama === p.Nama && a.Tanggal && a.Tanggal.startsWith(prefix) && !liburSet.has(a.Tanggal)
+      a.Nama === p.Nama && a.Tanggal && a.Tanggal.startsWith(prefix) &&
+      a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai && !liburSet.has(a.Tanggal)
     ).length;
     const hadir = Math.max(workingDays - tidakHadir, 0);
     const pct = workingDays > 0 ? Math.round((hadir / workingDays) * 100) : 0;
     return { nama: p.Nama, pct };
-  }).sort((a, b) => a.pct - b.pct);
+  }).filter(Boolean).sort((a, b) => a.pct - b.pct);
 
   renderStatList("statAbsenList", results, state.statAbsenExpanded, "absen");
   document.getElementById("toggleStatAbsenBtn").textContent =
@@ -946,42 +975,51 @@ function renderStatApel() {
 
   const now = new Date();
   const isBulanBerjalan = (year === now.getFullYear() && month === now.getMonth());
-  const workingDaysTotal = isBulanBerjalan
-    ? countWorkingDaysInMonth(year, month, now.getDate())
-    : countWorkingDaysInMonth(year, month);
+  const jumlahHariBulan = new Date(year, month + 1, 0).getDate();
+  const periodeMulai = `${year}-${pad2(month + 1)}-01`;
+  const periodeSelesai = isBulanBerjalan
+    ? `${year}-${pad2(month + 1)}-${pad2(now.getDate())}`
+    : `${year}-${pad2(month + 1)}-${pad2(jumlahHariBulan)}`;
 
   const prefix = `${year}-${pad2(month + 1)}`;
 
-  const results = state.data.pegawai.map(p => {
-    // Tanggal Sakit/Izin/Cuti/Alpa OTOMATIS terhitung sebagai "tidak ikut apel"
-    // (baik Pagi maupun Siang) - jadi tidak perlu dicentang manual satu-satu,
-    // dan ikut menurunkan persentase (bukan dikecualikan).
-    const absenDates = new Set(
-      state.data.absensi
-        .filter(a => a.Nama === p.Nama && a.Tanggal && a.Tanggal.startsWith(prefix))
-        .map(a => a.Tanggal)
-    );
+  const results = state.data.pegawai
+    .filter(pegawaiWajibApel) // 9 pegawai "WajibApel: Tidak" dikecualikan total dari sini
+    .map(p => {
+      // Pegawai rotasi/sementara: kecualikan total kalau belum/tidak lagi aktif bulan ini
+      const rentang = hitungRentangAktifPegawai(p, periodeMulai, periodeSelesai);
+      if (!rentang) return null;
+      const workingDaysTotal = countWorkingDaysInRange(rentang.mulai, rentang.selesai);
 
-    const missedPagiDates = new Set(absenDates);
-    state.data.apel
-      .filter(a => a.Nama === p.Nama && a.Sesi === "Pagi" && a.Tanggal && a.Tanggal.startsWith(prefix))
-      .forEach(a => missedPagiDates.add(a.Tanggal));
+      // Tanggal Sakit/Izin/Cuti/Alpa OTOMATIS terhitung sebagai "tidak ikut apel"
+      // (baik Pagi maupun Siang) - jadi tidak perlu dicentang manual satu-satu,
+      // dan ikut menurunkan persentase (bukan dikecualikan).
+      const absenDates = new Set(
+        state.data.absensi
+          .filter(a => a.Nama === p.Nama && a.Tanggal && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+          .map(a => a.Tanggal)
+      );
 
-    const missedSiangDates = new Set(absenDates);
-    state.data.apel
-      .filter(a => a.Nama === p.Nama && a.Sesi === "Siang" && a.Tanggal && a.Tanggal.startsWith(prefix))
-      .forEach(a => missedSiangDates.add(a.Tanggal));
+      const missedPagiDates = new Set(absenDates);
+      state.data.apel
+        .filter(a => a.Nama === p.Nama && a.Sesi === "Pagi" && a.Tanggal && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+        .forEach(a => missedPagiDates.add(a.Tanggal));
 
-    const pctPagi = workingDaysTotal > 0 ? Math.round(((workingDaysTotal - missedPagiDates.size) / workingDaysTotal) * 100) : 0;
-    const pctSiang = workingDaysTotal > 0 ? Math.round(((workingDaysTotal - missedSiangDates.size) / workingDaysTotal) * 100) : 0;
-    return { nama: p.Nama, pctPagi: Math.max(pctPagi, 0), pctSiang: Math.max(pctSiang, 0) };
-  }).sort((a, b) => (a.pctPagi + a.pctSiang) - (b.pctPagi + b.pctSiang));
+      const missedSiangDates = new Set(absenDates);
+      state.data.apel
+        .filter(a => a.Nama === p.Nama && a.Sesi === "Siang" && a.Tanggal && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+        .forEach(a => missedSiangDates.add(a.Tanggal));
+
+      const pctPagi = workingDaysTotal > 0 ? Math.round(((workingDaysTotal - missedPagiDates.size) / workingDaysTotal) * 100) : 0;
+      const pctSiang = workingDaysTotal > 0 ? Math.round(((workingDaysTotal - missedSiangDates.size) / workingDaysTotal) * 100) : 0;
+      return { nama: p.Nama, pctPagi: Math.max(pctPagi, 0), pctSiang: Math.max(pctSiang, 0) };
+    }).filter(Boolean).sort((a, b) => (a.pctPagi + a.pctSiang) - (b.pctPagi + b.pctSiang));
 
   const el = document.getElementById("statApelList");
   const filtered = applyNameSearchFilter(results, "statApelSearch");
   const shown = state.statApelExpanded ? filtered : filtered.slice(0, 10);
   el.innerHTML = shown.map(r => `
-    <div class="stat-row apel-row clickable" data-nama="${r.nama}">
+    <div class="stat-row apel-row clickable" data-nama="${r.nama}" data-pct-pagi="${r.pctPagi}" data-pct-siang="${r.pctSiang}">
       <div class="stat-name">${r.nama}</div>
       <div class="apel-badges">
         <span class="apel-badge">Pagi <b class="${getPctColorClass(r.pctPagi)}">${formatPctLabel(r.pctPagi)}</b></span>
@@ -990,7 +1028,10 @@ function renderStatApel() {
     </div>
   `).join("");
   el.querySelectorAll(".stat-row").forEach(row => {
-    row.addEventListener("click", () => openStatDetail(row.dataset.nama, "apel"));
+    row.addEventListener("click", () => openStatDetail(row.dataset.nama, "apel", {
+      pctPagi: Number(row.dataset.pctPagi),
+      pctSiang: Number(row.dataset.pctSiang)
+    }));
   });
 
   document.getElementById("toggleStatApelBtn").textContent =
@@ -1030,6 +1071,32 @@ function countWorkingDaysInRange(dariKey, sampaiKey) {
   return count;
 }
 
+// ============================================================
+// MASA AKTIF PEGAWAI (mendukung pegawai rotasi/sementara)
+// Kolom TanggalMulai/TanggalSelesai di sheet Pegawai bersifat OPSIONAL -
+// kalau kosong, dianggap sudah aktif sejak dulu / masih aktif terus
+// (perilaku lama, tidak berubah untuk pegawai tetap).
+// ============================================================
+function hitungRentangAktifPegawai(pegawai, periodeMulai, periodeSelesai) {
+  const mulai = pegawai.TanggalMulai && String(pegawai.TanggalMulai).trim()
+    ? String(pegawai.TanggalMulai).trim() : periodeMulai;
+  const selesai = pegawai.TanggalSelesai && String(pegawai.TanggalSelesai).trim()
+    ? String(pegawai.TanggalSelesai).trim() : periodeSelesai;
+
+  const efektifMulai = mulai > periodeMulai ? mulai : periodeMulai;
+  const efektifSelesai = selesai < periodeSelesai ? selesai : periodeSelesai;
+
+  if (efektifMulai > efektifSelesai) return null; // tidak aktif sama sekali di periode ini
+  return { mulai: efektifMulai, selesai: efektifSelesai };
+}
+
+// Pegawai yang WajibApel diisi "Tidak" (tanpa memandang huruf besar/kecil)
+// dikecualikan total dari Statistik Apel - tetap normal di statistik lain.
+function pegawaiWajibApel(pegawai) {
+  const nilai = (pegawai.WajibApel || "").toString().trim().toLowerCase();
+  return nilai !== "tidak";
+}
+
 function renderStatKegiatan() {
   const dari = document.getElementById("statKegiatanDari").value;
   const sampai = document.getElementById("statKegiatanSampai").value;
@@ -1039,17 +1106,19 @@ function renderStatKegiatan() {
     return;
   }
 
-  const totalWorkingDays = countWorkingDaysInRange(dari, sampai);
-
   const results = state.data.pegawai.map(p => {
+    const rentang = hitungRentangAktifPegawai(p, dari, sampai);
+    if (!rentang) return null; // tidak aktif sama sekali di periode ini - kecualikan
+    const workingDaysPegawai = countWorkingDaysInRange(rentang.mulai, rentang.selesai);
+
     const dates = new Set(
       state.data.kegiatanLuar
-        .filter(k => k.Nama === p.Nama && k.Tanggal >= dari && k.Tanggal <= sampai)
+        .filter(k => k.Nama === p.Nama && k.Tanggal >= rentang.mulai && k.Tanggal <= rentang.selesai)
         .map(k => k.Tanggal)
     );
-    const pct = totalWorkingDays > 0 ? Math.round((dates.size / totalWorkingDays) * 100) : 0;
+    const pct = workingDaysPegawai > 0 ? Math.round((dates.size / workingDaysPegawai) * 100) : 0;
     return { nama: p.Nama, pct };
-  }).sort((a, b) => b.pct - a.pct);
+  }).filter(Boolean).sort((a, b) => b.pct - a.pct);
 
   renderStatList("statKegiatanList", results, state.statKegiatanExpanded, "kegiatan");
   document.getElementById("toggleStatKegiatanBtn").textContent =
@@ -1066,7 +1135,7 @@ function renderStatList(containerId, results, expanded, type) {
     const pctClass = type === "absen" ? getPctColorClass(r.pct) : "";
     const pctLabel = type === "absen" ? formatPctLabel(r.pct) : `${r.pct}%`;
     return `
-    <div class="stat-row clickable" data-nama="${r.nama}">
+    <div class="stat-row clickable" data-nama="${r.nama}" data-pct="${r.pct}">
       <div class="stat-name">${r.nama}</div>
       <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${r.pct}%"></div></div>
       <div class="stat-pct ${pctClass}">${pctLabel}</div>
@@ -1075,14 +1144,14 @@ function renderStatList(containerId, results, expanded, type) {
   }).join("");
 
   el.querySelectorAll(".stat-row").forEach(row => {
-    row.addEventListener("click", () => openStatDetail(row.dataset.nama, type));
+    row.addEventListener("click", () => openStatDetail(row.dataset.nama, type, { pct: Number(row.dataset.pct) }));
   });
 }
 
 // ============================================================
 // DETAIL PER PEGAWAI (saat nama diklik di daftar statistik)
 // ============================================================
-function openStatDetail(nama, type) {
+function openStatDetail(nama, type, pctInfo) {
   document.getElementById("statDetailTitle").textContent = nama;
   const contentEl = document.getElementById("statDetailContent");
   const periodeEl = document.getElementById("statDetailPeriode");
@@ -1093,6 +1162,16 @@ function openStatDetail(nama, type) {
   detailBox.classList.remove("effect-slideup", "effect-flip", "effect-bounce");
   const efekMap = { absen: "effect-slideup", apel: "effect-flip", kegiatan: "effect-bounce" };
   detailBox.classList.add(efekMap[type] || "effect-slideup");
+
+  // Reaksi singkat (menangis kalau ada yang ≤50%, tepuk tangan kalau 100% penuh) -
+  // hanya untuk Kehadiran & Apel, bukan Kegiatan Luar.
+  if (pctInfo && type === "absen") {
+    if (pctInfo.pct <= 50) triggerStatReaction("😢");
+    else if (pctInfo.pct >= 100) triggerStatReaction("👏");
+  } else if (pctInfo && type === "apel") {
+    if (pctInfo.pctPagi <= 50 || pctInfo.pctSiang <= 50) triggerStatReaction("😢");
+    else if (pctInfo.pctPagi >= 100 && pctInfo.pctSiang >= 100) triggerStatReaction("👏");
+  }
 
   if (type === "absen") {
     const [y, m] = document.getElementById("statAbsenBulan").value.split("-").map(Number);

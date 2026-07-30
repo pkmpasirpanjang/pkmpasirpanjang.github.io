@@ -441,6 +441,30 @@ h2 {
 }
 .modal-box.small { max-width: 420px; }
 
+/* Reaksi singkat (menangis/tepuk tangan) di atas pop-up detail statistik */
+#statDetailModal .modal-box { position: relative; }
+.reaction-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 84px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+}
+.reaction-overlay.hidden { display: none; }
+.reaction-overlay.show { display: flex; animation: reactionPop 1000ms ease forwards; }
+@keyframes reactionPop {
+  0% { opacity: 0; transform: scale(0.4); }
+  18% { opacity: 1; transform: scale(1.2); }
+  30% { transform: scale(1); }
+  75% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+
 /* Pop-up detail tanggal (klik kalender) - membesar dari 92% ke 100%.
    Selector #dateModal .modal-box lebih spesifik dari .modal-box biasa
    di atas, jadi otomatis menang tanpa perlu aturan "pembatal" apa pun. */
