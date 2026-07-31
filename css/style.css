@@ -695,6 +695,38 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
 .error-text { color: var(--danger); font-size: 12px; margin: 6px 0 0; }
 .form-hint { color: var(--text-muted); font-size: 12px; margin: 8px 0; line-height: 1.5; }
 
+/* Kartu identitas pegawai (NIP, Pangkat/Golongan, Jabatan) di pop-up detail statistik */
+.pegawai-id-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--glass-border);
+}
+.id-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.id-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  min-width: 92px;
+  flex-shrink: 0;
+}
+.id-value {
+  color: var(--accent-teal);
+  font-weight: 700;
+  font-family: var(--font-display);
+  word-break: break-word;
+}
+
 /* ============================================================
    TOAST
    ============================================================ */

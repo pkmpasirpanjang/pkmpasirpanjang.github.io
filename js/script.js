@@ -443,17 +443,13 @@ function triggerStatReaction(emoji) {
 
 function populateEmployeeSelects() {
   const names = state.data.pegawai.map(p => p.Nama).sort();
+  const optionsHtml = names.map(n => `<option value="${n}"></option>`).join("");
 
-  const absenSel = document.getElementById("absenNama");
-  absenSel.innerHTML = `<option value="">-- Pilih Pegawai --</option>` +
-    names.map(n => `<option value="${n}">${n}</option>`).join("");
+  document.getElementById("absenNamaOptions").innerHTML = optionsHtml;
+  document.getElementById("rangeNamaOptions").innerHTML = optionsHtml;
 
   const kegiatanSel = document.getElementById("kegiatanNama");
   kegiatanSel.innerHTML = `<option value="">-- Pilih Pegawai --</option>` +
-    names.map(n => `<option value="${n}">${n}</option>`).join("");
-
-  const rangeSel = document.getElementById("rangeNama");
-  rangeSel.innerHTML = `<option value="">-- Pilih Pegawai --</option>` +
     names.map(n => `<option value="${n}">${n}</option>`).join("");
 
   renderKegiatanChecklist(names, "");
@@ -575,10 +571,15 @@ function openAbsenForm(existing) {
 
 async function submitAbsen(e) {
   e.preventDefault();
+  const namaInput = document.getElementById("absenNama").value.trim();
+  if (!state.data.pegawai.some(p => p.Nama === namaInput)) {
+    showToast("Nama pegawai tidak ditemukan di daftar - pilih dari saran yang muncul saat mengetik.", true);
+    return;
+  }
   const row = document.getElementById("absenRow").value;
   const payload = {
     Tanggal: state.selectedDate,
-    Nama: document.getElementById("absenNama").value,
+    Nama: namaInput,
     Status: document.getElementById("absenStatus").value,
     Keterangan: document.getElementById("absenKeterangan").value
   };
@@ -846,6 +847,11 @@ function setupRangeAbsenForm() {
 
   document.getElementById("formAbsenRange").addEventListener("submit", async (e) => {
     e.preventDefault();
+    const namaInput = document.getElementById("rangeNama").value.trim();
+    if (!state.data.pegawai.some(p => p.Nama === namaInput)) {
+      showToast("Nama pegawai tidak ditemukan di daftar - pilih dari saran yang muncul saat mengetik.", true);
+      return;
+    }
     const mulai = document.getElementById("rangeMulai").value;
     const selesai = document.getElementById("rangeSelesai").value;
     if (selesai < mulai) {
@@ -853,7 +859,7 @@ function setupRangeAbsenForm() {
       return;
     }
     await sendAction("addAbsensiRange", {
-      Nama: document.getElementById("rangeNama").value,
+      Nama: namaInput,
       Status: document.getElementById("rangeStatus").value,
       Keterangan: document.getElementById("rangeKeterangan").value,
       TanggalMulai: mulai,
@@ -1171,6 +1177,21 @@ function openStatDetail(nama, type, pctInfo) {
   } else if (pctInfo && type === "apel") {
     if (pctInfo.pctPagi <= 50 || pctInfo.pctSiang <= 50) triggerStatReaction("😢");
     else if (pctInfo.pctPagi >= 100 && pctInfo.pctSiang >= 100) triggerStatReaction("👏");
+  }
+
+  // Kartu identitas (NIP, Pangkat/Golongan, Jabatan) - khusus Kehadiran & Apel
+  const identityEl = document.getElementById("statDetailIdentity");
+  if (type === "absen" || type === "apel") {
+    const pegawai = state.data.pegawai.find(p => p.Nama === nama);
+    identityEl.innerHTML = `
+      <div class="pegawai-id-card">
+        <div class="id-row"><span class="id-label">NIP</span><span class="id-value">${(pegawai && pegawai.NIP) || "-"}</span></div>
+        <div class="id-row"><span class="id-label">Pangkat/Gol</span><span class="id-value">${(pegawai && pegawai.PangkatGolongan) || "-"}</span></div>
+        <div class="id-row"><span class="id-label">Jabatan</span><span class="id-value">${(pegawai && pegawai.Jabatan) || "-"}</span></div>
+      </div>
+    `;
+  } else {
+    identityEl.innerHTML = "";
   }
 
   if (type === "absen") {

@@ -6,7 +6,7 @@
 <title>Dashboard Absensi & Kegiatan Luar Gedung — UPTD Puskesmas Pasir Panjang</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=11">
+<link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
 
@@ -168,7 +168,8 @@
     <form id="formAbsen">
       <input type="hidden" id="absenRow">
       <label>Nama Pegawai</label>
-      <select id="absenNama" required></select>
+      <input type="text" id="absenNama" list="absenNamaOptions" placeholder="Ketik untuk cari nama..." autocomplete="off" required>
+      <datalist id="absenNamaOptions"></datalist>
       <label>Status</label>
       <select id="absenStatus" required></select>
       <label>Keterangan (opsional)</label>
@@ -191,7 +192,8 @@
     <p class="form-hint">Pakai ini untuk cuti/sakit yang berlangsung beberapa hari sampai beberapa bulan — cukup 1 kali input, semua tanggal di rentang itu otomatis tercatat.</p>
     <form id="formAbsenRange">
       <label>Nama Pegawai</label>
-      <select id="rangeNama" required></select>
+      <input type="text" id="rangeNama" list="rangeNamaOptions" placeholder="Ketik untuk cari nama..." autocomplete="off" required>
+      <datalist id="rangeNamaOptions"></datalist>
       <label>Status</label>
       <select id="rangeStatus" required></select>
       <label>Tanggal Mulai</label>
@@ -275,6 +277,7 @@
       <h2 id="statDetailTitle">—</h2>
       <button class="close-btn js-close-form">✕</button>
     </div>
+    <div id="statDetailIdentity"></div>
     <p id="statDetailPeriode" class="form-hint"></p>
     <div id="statDetailContent" class="modal-list"></div>
   </div>
@@ -306,7 +309,7 @@
   <p>© 2026</p>
 </footer>
 
-<script src="js/config.js?v=11"></script>
-<script src="js/script.js?v=11"></script>
+<script src="js/config.js?v=14"></script>
+<script src="js/script.js?v=14"></script>
 </body>
 </html>
