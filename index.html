@@ -6,7 +6,8 @@
 <title>Dashboard Absensi & Kegiatan Luar Gedung — UPTD Puskesmas Pasir Panjang</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=21">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body>
 
@@ -45,6 +46,8 @@
 
 <main class="content">
 
+  <p id="dataLoadingIndicator" class="loading-indicator hidden">⏳ Memuat data terbaru...</p>
+
   <!-- ============ TAB: KALENDER ============ -->
   <section id="tab-kalender" class="tab-panel active">
     <div class="glass-panel calendar-panel">
@@ -53,7 +56,6 @@
         <h2 id="calendarTitle">—</h2>
         <button id="nextMonthBtn" class="nav-arrow">›</button>
       </div>
-      <p id="dataLoadingIndicator" class="loading-indicator hidden">⏳ Memuat data terbaru...</p>
       <div class="calendar-weekdays">
         <span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span><span>Min</span>
       </div>
@@ -108,6 +110,7 @@
       <button id="toggleStatKegiatanBtn" class="btn-secondary">Lihat Semua Pegawai</button>
     </div>
   </section>
+
 
 </main>
 
@@ -286,6 +289,21 @@
 <!-- ============ TOAST NOTIFICATION ============ -->
 <div id="toast" class="toast hidden"></div>
 
+<!-- ============ EXPORT EXCEL FLOATING MENU ============ -->
+<div class="export-menu">
+  <button id="exportToggleBtn" class="export-toggle" title="Unduh Laporan Excel">
+    <svg viewBox="0 0 48 48" width="26" height="26" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="4" y="4" width="40" height="40" rx="9" fill="#1D6F42"/>
+      <path d="M13 13h8l3 4.5 3-4.5h8l-8 10.5L35 35h-8l-3-4.5L21 35h-8l8-11.5z" fill="#ffffff"/>
+    </svg>
+  </button>
+  <div id="exportChoices" class="export-choices hidden">
+    <button type="button" class="export-choice-btn" data-jenis="absen"><span class="export-choice-icon">📋</span> Kehadiran</button>
+    <button type="button" class="export-choice-btn" data-jenis="apel"><span class="export-choice-icon">🙋</span> Apel</button>
+    <button type="button" class="export-choice-btn" data-jenis="kegiatan"><span class="export-choice-icon">🧭</span> Kegiatan Luar</button>
+  </div>
+</div>
+
 <!-- ============ SOCIAL MEDIA FLOATING MENU ============ -->
 <div class="social-menu">
   <button id="socialToggleBtn" class="social-toggle">
@@ -299,6 +317,24 @@
   </div>
 </div>
 
+<!-- ============ MODAL: PILIH RENTANG TANGGAL EXPORT ============ -->
+<div id="exportDateModal" class="modal-overlay hidden">
+  <div class="modal-box glass-panel small">
+    <div class="modal-header">
+      <h2 id="exportModalTitle">Unduh Laporan</h2>
+      <button class="close-btn js-close-form">✕</button>
+    </div>
+    <label>Dari Tanggal</label>
+    <input type="date" id="exportDari">
+    <label>Sampai Tanggal</label>
+    <input type="date" id="exportSampai">
+    <p id="exportSummary" class="form-hint"></p>
+    <div class="form-actions">
+      <button type="button" class="btn-primary" id="exportDownloadBtn">⬇️ Unduh Excel</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ FOOTER ============ -->
 <footer class="site-footer">
   <p>Built with HTML • CSS • JavaScript</p>
@@ -309,7 +345,7 @@
   <p>© 2026</p>
 </footer>
 
-<script src="js/config.js?v=14"></script>
-<script src="js/script.js?v=14"></script>
+<script src="js/config.js?v=21"></script>
+<script src="js/script.js?v=21"></script>
 </body>
 </html>

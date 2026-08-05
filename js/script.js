@@ -10,9 +10,12 @@ const state = {
   statAbsenExpanded: false,
   statKegiatanExpanded: false,
   statApelExpanded: false,
+  lastApelResults: [],
+  lastKegiatanResults: [],
   kegiatanSelectedNames: new Set(), // pegawai yang dicentang di form "Tambah Kegiatan Luar"
   apelPagiSelected: new Set(),      // pegawai yang dicentang "tidak ikut apel pagi" di tanggal yg sedang dibuka
-  apelSiangSelected: new Set()      // pegawai yang dicentang "tidak ikut apel siang" di tanggal yg sedang dibuka
+  apelSiangSelected: new Set(),     // pegawai yang dicentang "tidak ikut apel siang" di tanggal yg sedang dibuka
+  loadedMonths: new Set()           // "YYYY-MM" bulan yang data Absensi/KegiatanLuar/Apel-nya sudah diambil sesi ini
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -32,12 +35,14 @@ function getActivityColor(namaKegiatan) {
 // ============================================================
 // INIT
 // ============================================================
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   applySocialLinks();
   setupTabs();
   setupCalendarNav();
   setupModals();
   setupAdmin();
+  setupExportMenu();
+  setupRippleEffect();
 
   // Kalau ada data dari kunjungan sebelumnya tersimpan di perangkat ini,
   // tampilkan dulu itu SEKARANG JUGA (walau mungkin sedikit basi), supaya
@@ -46,15 +51,50 @@ document.addEventListener("DOMContentLoaded", () => {
   renderCalendar();
   if (hasCache) {
     renderSectionSafely("Daftar pegawai (dropdown)", populateEmployeeSelects);
-    renderSectionSafely("Pilihan bulan - Kehadiran", populateStatAbsenBulanOptions);
-    renderSectionSafely("Pilihan bulan - Apel", populateStatApelBulanOptions);
-    renderSectionSafely("Statistik Kehadiran", renderStatAbsen);
-    renderSectionSafely("Statistik Apel", renderStatApel);
-    renderSectionSafely("Statistik Kegiatan Luar", renderStatKegiatan);
   }
+  // Pilihan bulan di dropdown Statistik cuma daftar 12 bulan terakhir (statis,
+  // tidak butuh data) - aman disiapkan dari awal supaya dropdown langsung terisi.
+  renderSectionSafely("Pilihan bulan - Kehadiran", populateStatAbsenBulanOptions);
+  renderSectionSafely("Pilihan bulan - Apel", populateStatApelBulanOptions);
 
-  loadData(hasCache);
+  // Hanya ambil data BULAN YANG SEDANG DITAMPILKAN di kalender dulu (bukan
+  // seluruh riwayat) - supaya buka pertama kali tetap cepat walau data lama
+  // sudah menumpuk bertahun-tahun. Statistik & Kegiatan Luar baru diambil
+  // saat tab-nya benar-benar dibuka (lihat loadDataForTab).
+  // Kalau sebelumnya sudah ada cache yang langsung ditampilkan di atas,
+  // penyegaran ini dilakukan diam-diam (tanpa indikator loading yang
+  // menutupi) - supaya tidak terasa "loading" padahal isinya sudah tampil.
+  await ensureMonthsLoaded([currentMonthKey()], { silent: hasCache });
+  renderSectionSafely("Kalender", renderCalendar);
+  renderSectionSafely("Daftar pegawai (dropdown)", populateEmployeeSelects);
 });
+
+function currentMonthKey() {
+  return monthKeyOf(state.currentYear, state.currentMonth);
+}
+
+// ---- Helper rentang/bulan ----
+function monthKeyOf(year, month0) { return `${year}-${pad2(month0 + 1)}`; }
+function firstDayOfMonthKey(monthKey) { return `${monthKey}-01`; }
+function lastDayOfMonthKey(monthKey) {
+  const [y, m] = monthKey.split("-").map(Number);
+  return `${monthKey}-${pad2(new Date(y, m, 0).getDate())}`;
+}
+// Daftar semua "YYYY-MM" yang tercakup dalam rentang [dari, sampai] (format yyyy-MM-dd)
+function monthKeysInRange(dari, sampai) {
+  if (!dari || !sampai) return [];
+  const keys = [];
+  let [y, m] = dari.split("-").map(Number);
+  const [ey, em] = sampai.split("-").map(Number);
+  let guard = 0;
+  while ((y < ey || (y === ey && m <= em)) && guard < 600) {
+    keys.push(`${y}-${pad2(m)}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+    guard++;
+  }
+  return keys;
+}
 
 function loadCachedData() {
   try {
@@ -75,40 +115,89 @@ function saveCachedData() {
   }
 }
 
-async function loadData(isBackgroundRefresh) {
-  const indicator = document.getElementById("dataLoadingIndicator");
-  const mulai = Date.now();
-  if (indicator) indicator.classList.remove("hidden");
+// Memastikan data bulan-bulan tertentu sudah ada di state.data. Bulan yang
+// SUDAH pernah diambil sesi ini (ada di state.loadedMonths) TIDAK diambil ulang -
+// jadi berpindah-pindah bulan/tab yang sama berkali-kali tetap instan.
+// opts.silent = true -> tidak menampilkan indikator loading (dipakai untuk
+// penyegaran diam-diam di belakang layar).
+async function ensureMonthsLoaded(monthKeys, opts) {
+  opts = opts || {};
+  const missing = [...new Set(monthKeys.filter(Boolean))].filter(mk => !state.loadedMonths.has(mk));
+  if (missing.length === 0) return true;
+
+  missing.sort();
+  const dari = firstDayOfMonthKey(missing[0]);
+  const sampai = lastDayOfMonthKey(missing[missing.length - 1]);
+
+  if (!opts.silent) showLoadingIndicator();
   try {
-    const res = await fetch(`${CONFIG.API_URL}?action=data&_ts=${Date.now()}`, { cache: "no-store" });
+    const res = await fetch(`${CONFIG.API_URL}?action=data&dari=${dari}&sampai=${sampai}&_ts=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
-    state.data = json;
+    mergeFetchedData(json, dari, sampai);
+    // Tandai SEMUA bulan dalam rentang fetch ini sebagai sudah dimuat (bukan cuma
+    // yang diminta), supaya bulan lain di rentang yang sama tidak ditarik ulang.
+    monthKeysInRange(dari, sampai).forEach(mk => state.loadedMonths.add(mk));
     saveCachedData();
+    return true;
   } catch (err) {
-    // Kalau ini penyegaran di belakang layar dan sebelumnya sempat berhasil
-    // pakai data cache, jangan ganggu dengan pesan error - biarkan saja
-    // dashboard tetap tampil dengan data cache tadi.
-    if (!isBackgroundRefresh) {
-      showToast("Gagal memuat data. Periksa koneksi atau URL API. (" + err.message + ")", true);
-    }
-    if (indicator) indicator.classList.add("hidden");
-    return; // data gagal diambil - hentikan di sini, tidak perlu lanjut render apa pun
+    if (!opts.silent) showToast("Gagal memuat data. Periksa koneksi atau URL API. (" + err.message + ")", true);
+    return false;
+  } finally {
+    if (!opts.silent) hideLoadingIndicator();
   }
-  const sisaWaktu = 400 - (Date.now() - mulai);
-  if (sisaWaktu > 0) await new Promise(r => setTimeout(r, sisaWaktu));
-  if (indicator) indicator.classList.add("hidden");
+}
 
-  // Setiap bagian tampilan di-render terpisah dan "dipagari" try-catch masing-masing.
-  // Supaya kalau ada 1 bagian saja yang bermasalah, bagian lain TETAP tampil normal
-  // (tidak semua ikut macet gara-gara 1 bagian error).
-  renderSectionSafely("Kalender", renderCalendar);
-  renderSectionSafely("Daftar pegawai (dropdown)", populateEmployeeSelects);
-  renderSectionSafely("Pilihan bulan - Kehadiran", populateStatAbsenBulanOptions);
-  renderSectionSafely("Pilihan bulan - Apel", populateStatApelBulanOptions);
-  renderSectionSafely("Statistik Kehadiran", renderStatAbsen);
-  renderSectionSafely("Statistik Apel", renderStatApel);
-  renderSectionSafely("Statistik Kegiatan Luar", renderStatKegiatan);
+// Menggabungkan data yang baru diambil ke state.data yang sudah ada di memori.
+// Pegawai & Libur selalu dikirim penuh oleh server (tabelnya kecil) - langsung
+// ditimpa. Absensi/KegiatanLuar/Apel hanya berisi data DALAM rentang [dari,
+// sampai] yang baru diambil - data lama di rentang itu dibuang dulu (supaya
+// perubahan/hapus dari admin lain ikut ter-refresh, bukan menumpuk duplikat),
+// baru digabungkan dengan yang baru. Data di luar rentang ini (bulan lain yang
+// sudah dimuat sebelumnya) tidak disentuh sama sekali.
+function mergeFetchedData(fresh, dari, sampai) {
+  state.data.pegawai = fresh.pegawai || [];
+  state.data.libur = fresh.libur || [];
+  state.data.absensi = state.data.absensi.filter(a => a.Tanggal < dari || a.Tanggal > sampai).concat(fresh.absensi || []);
+  state.data.kegiatanLuar = state.data.kegiatanLuar.filter(k => k.Tanggal < dari || k.Tanggal > sampai).concat(fresh.kegiatanLuar || []);
+  state.data.apel = state.data.apel.filter(a => a.Tanggal < dari || a.Tanggal > sampai).concat(fresh.apel || []);
+}
+
+function showLoadingIndicator(text) {
+  const el = document.getElementById("dataLoadingIndicator");
+  if (!el) return;
+  el.textContent = text || "⏳ Memuat data...";
+  el.classList.remove("hidden");
+}
+function hideLoadingIndicator() {
+  const el = document.getElementById("dataLoadingIndicator");
+  if (el) el.classList.add("hidden");
+}
+
+// Dipanggil setiap kali pindah tab - memastikan data yang dibutuhkan tab itu
+// (bulan kalender / bulan statistik / rentang kegiatan luar) sudah tersedia
+// sebelum di-render. Kalau sudah pernah dimuat, ini langsung selesai (instan).
+async function loadDataForTab(tabName) {
+  if (tabName === "kalender") {
+    await ensureMonthsLoaded([currentMonthKey()]);
+    renderSectionSafely("Kalender", renderCalendar);
+  } else if (tabName === "statAbsen") {
+    const val = document.getElementById("statAbsenBulan").value;
+    if (!val) return;
+    await ensureMonthsLoaded([val]);
+    renderSectionSafely("Statistik Kehadiran", renderStatAbsen);
+  } else if (tabName === "statApel") {
+    const val = document.getElementById("statApelBulan").value;
+    if (!val) return;
+    await ensureMonthsLoaded([val]);
+    renderSectionSafely("Statistik Apel", renderStatApel);
+  } else if (tabName === "statKegiatan") {
+    const dari = document.getElementById("statKegiatanDari").value;
+    const sampai = document.getElementById("statKegiatanSampai").value;
+    if (!dari || !sampai || dari > sampai) return;
+    await ensureMonthsLoaded(monthKeysInRange(dari, sampai));
+    renderSectionSafely("Statistik Kegiatan Luar", renderStatKegiatan);
+  }
 }
 
 function renderSectionSafely(namaBagian, fn) {
@@ -124,11 +213,14 @@ function renderSectionSafely(namaBagian, fn) {
 // ============================================================
 function setupTabs() {
   document.querySelectorAll(".tab-btn[data-tab]").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.remove("active"));
       document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
       btn.classList.add("active");
       document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+      // Pastikan data yang dibutuhkan tab ini sudah tersedia (ambil dari server
+      // kalau belum pernah dimuat sesi ini, instan kalau sudah pernah).
+      await loadDataForTab(btn.dataset.tab);
     });
   });
 }
@@ -136,6 +228,49 @@ function setupTabs() {
 // ============================================================
 // SOCIAL MENU
 // ============================================================
+// ============================================================
+// EFEK RIPPLE / RIAK AIR (muncul di titik manapun yang diklik/disentuh -
+// termasuk area kosong sekalipun, bukan cuma tombol). Terdiri dari 1
+// kilatan kecil di titik sentuh + beberapa cincin konsentris yang
+// menyusul bertahap, melebar pelan lalu memudar - meniru riak air
+// sungguhan, bukan cuma 1 lingkaran membesar (yang kelihatan seperti asap).
+// Murni CSS animation (elemen dibuang otomatis dari halaman setelah
+// animasi selesai), jadi ringan walau diklik berkali-kali cepat.
+// ============================================================
+function setupRippleEffect() {
+  const kurangiAnimasi = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (kurangiAnimasi) return; // hormati pengaturan aksesibilitas pengguna
+
+  document.addEventListener("pointerdown", (e) => {
+    // Hanya untuk klik kiri mouse / sentuhan jari, bukan klik kanan dsb.
+    if (e.button !== undefined && e.button !== 0) return;
+    spawnRippleAt(e.clientX, e.clientY);
+  }, { passive: true });
+}
+
+function spawnRippleAt(x, y) {
+  const buatElemen = (className, delayMs, umurMs) => {
+    const el = document.createElement("span");
+    el.className = className;
+    el.style.left = x + "px";
+    el.style.top = y + "px";
+    if (delayMs) el.style.animationDelay = delayMs + "ms";
+    document.body.appendChild(el);
+    el.addEventListener("animationend", () => el.remove());
+    setTimeout(() => el.remove(), umurMs); // jaring pengaman kalau animationend tidak terpicu
+  };
+
+  buatElemen("ripple-flash", 0, 500);
+  // 3 cincin menyusul bertahap dengan jeda singkat - persis seperti riak
+  // air asli yang menyebar dalam beberapa gelombang, bukan cuma 1 lingkaran.
+  // Total durasi keseluruhan dijaga sekitar 1 detik saja supaya cepat hilang.
+  const JUMLAH_CINCIN = 3;
+  const JEDA_ANTAR_CINCIN = 110; // ms
+  for (let i = 0; i < JUMLAH_CINCIN; i++) {
+    buatElemen("ripple-ring", i * JEDA_ANTAR_CINCIN, 750 + i * JEDA_ANTAR_CINCIN + 150);
+  }
+}
+
 function applySocialLinks() {
   document.getElementById("socialWa").href = CONFIG.SOSMED.whatsapp;
   document.getElementById("socialFb").href = CONFIG.SOSMED.facebook;
@@ -143,7 +278,18 @@ function applySocialLinks() {
   document.getElementById("socialTiktok").href = CONFIG.SOSMED.tiktok;
 
   document.getElementById("socialToggleBtn").addEventListener("click", () => {
-    document.getElementById("socialLinks").classList.toggle("hidden");
+    const links = document.getElementById("socialLinks");
+    const exportMenu = document.querySelector(".export-menu");
+    links.classList.toggle("hidden");
+
+    // Kalau menu sosial media sedang terbuka, dorong menu unduh Excel ke atas
+    // supaya tidak ketutupan/ketumpuk sama daftar ikon sosial media yang muncul.
+    if (!links.classList.contains("hidden")) {
+      const pushUp = links.offsetHeight + 10; // 10px = jarak antar menu
+      if (exportMenu) exportMenu.style.transform = `translateY(-${pushUp}px)`;
+    } else {
+      if (exportMenu) exportMenu.style.transform = "";
+    }
   });
 }
 
@@ -151,15 +297,15 @@ function applySocialLinks() {
 // CALENDAR
 // ============================================================
 function setupCalendarNav() {
-  document.getElementById("prevMonthBtn").addEventListener("click", () => {
+  document.getElementById("prevMonthBtn").addEventListener("click", async () => {
     state.currentMonth--;
     if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; }
-    renderCalendar();
+    await loadDataForTab("kalender");
   });
-  document.getElementById("nextMonthBtn").addEventListener("click", () => {
+  document.getElementById("nextMonthBtn").addEventListener("click", async () => {
     state.currentMonth++;
     if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
-    renderCalendar();
+    await loadDataForTab("kalender");
   });
 }
 
@@ -174,10 +320,12 @@ function getPctColorClass(pct) {
   return "pct-green-full";
 }
 
-// Untuk 100% diberi label bintang supaya jelas beda dari 75-99% (yang sama-sama hijau)
-function formatPctLabel(pct) {
+// Untuk 100% diberi label bintang supaya jelas beda dari 75-99% (yang sama-sama hijau).
+// ambangSedih: di bawah/sama nilai ini muncul emoji 😢 (default 50 untuk Apel,
+// Kehadiran pakai 85 - lihat pemanggilannya).
+function formatPctLabel(pct, ambangSedih = 50) {
   if (pct >= 100) return "⭐100%";
-  if (pct <= 50) return `😢${pct}%`;
+  if (pct <= ambangSedih) return `😢${pct}%`;
   return `${pct}%`;
 }
 
@@ -423,7 +571,7 @@ function setupModals() {
 function showModal(id) { document.getElementById(id).classList.remove("hidden"); }
 function hideModal(id) { document.getElementById(id).classList.add("hidden"); }
 
-// Menampilkan emoji besar sekilas (1 detik) di atas pop-up detail statistik,
+// Menampilkan emoji besar sekilas (2 detik) di atas pop-up detail statistik,
 // sebagai reaksi otomatis: 😢 untuk persentase ≤50%, 👏 untuk 100% penuh.
 let reactionTimer;
 function triggerStatReaction(emoji) {
@@ -438,7 +586,7 @@ function triggerStatReaction(emoji) {
   reactionTimer = setTimeout(() => {
     overlay.classList.add("hidden");
     overlay.classList.remove("show");
-  }, 1000);
+  }, 2000);
 }
 
 function populateEmployeeSelects() {
@@ -790,6 +938,7 @@ function setupAdmin() {
       document.getElementById("adminToggleBtn").textContent = "🔒 Mode Admin";
       document.getElementById("adminToggleBtn").classList.remove("admin-active");
       document.getElementById("rangeAbsenBtn").classList.add("hidden");
+      document.getElementById("exportChoices").classList.add("hidden");
       showToast("Keluar dari mode admin.");
     } else {
       showModal("pinModal");
@@ -887,7 +1036,7 @@ function populateStatAbsenBulanOptions() {
 
   if (!sel.dataset.bound) {
     sel.dataset.bound = "1";
-    sel.addEventListener("change", renderStatAbsen);
+    sel.addEventListener("change", () => loadDataForTab("statAbsen"));
     document.getElementById("toggleStatAbsenBtn").addEventListener("click", () => {
       state.statAbsenExpanded = !state.statAbsenExpanded;
       renderStatAbsen();
@@ -964,7 +1113,7 @@ function populateStatApelBulanOptions() {
 
   if (!sel.dataset.bound) {
     sel.dataset.bound = "1";
-    sel.addEventListener("change", renderStatApel);
+    sel.addEventListener("change", () => loadDataForTab("statApel"));
     document.getElementById("toggleStatApelBtn").addEventListener("click", () => {
       state.statApelExpanded = !state.statApelExpanded;
       renderStatApel();
@@ -1054,8 +1203,8 @@ function setupStatKegiatanEvents() {
   document.getElementById("statKegiatanDari").value = firstOfMonth;
   document.getElementById("statKegiatanSampai").value = todayStr;
 
-  document.getElementById("statKegiatanDari").addEventListener("change", renderStatKegiatan);
-  document.getElementById("statKegiatanSampai").addEventListener("change", renderStatKegiatan);
+  document.getElementById("statKegiatanDari").addEventListener("change", () => loadDataForTab("statKegiatan"));
+  document.getElementById("statKegiatanSampai").addEventListener("change", () => loadDataForTab("statKegiatan"));
   document.getElementById("toggleStatKegiatanBtn").addEventListener("click", () => {
     state.statKegiatanExpanded = !state.statKegiatanExpanded;
     renderStatKegiatan();
@@ -1075,6 +1224,22 @@ function countWorkingDaysInRange(dariKey, sampaiKey) {
     if (CONFIG.HARI_KERJA.includes(d.getDay()) && !liburSet.has(key)) count++;
   }
   return count;
+}
+
+// Sama seperti countWorkingDaysInRange, tapi mengembalikan daftar tanggalnya (bukan cuma jumlahnya).
+// Dipakai untuk menyusun kolom "Tanggal Ikut Apel" di rekap Excel.
+function getWorkingDaysListInRange(dariKey, sampaiKey) {
+  const liburSet = getLiburDatesSet();
+  const [y1, m1, d1] = dariKey.split("-").map(Number);
+  const [y2, m2, d2] = sampaiKey.split("-").map(Number);
+  const start = new Date(y1, m1 - 1, d1);
+  const end = new Date(y2, m2 - 1, d2);
+  const list = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    if (CONFIG.HARI_KERJA.includes(d.getDay()) && !liburSet.has(key)) list.push(key);
+  }
+  return list;
 }
 
 // ============================================================
@@ -1139,7 +1304,7 @@ function renderStatList(containerId, results, expanded, type) {
   el.innerHTML = shown.map(r => {
     // Pewarnaan tingkat persentase HANYA untuk Statistik Kehadiran, bukan Kegiatan Luar
     const pctClass = type === "absen" ? getPctColorClass(r.pct) : "";
-    const pctLabel = type === "absen" ? formatPctLabel(r.pct) : `${r.pct}%`;
+    const pctLabel = type === "absen" ? formatPctLabel(r.pct, 85) : `${r.pct}%`;
     return `
     <div class="stat-row clickable" data-nama="${r.nama}" data-pct="${r.pct}">
       <div class="stat-name">${r.nama}</div>
@@ -1172,20 +1337,24 @@ function openStatDetail(nama, type, pctInfo) {
   // Reaksi singkat (menangis kalau ada yang ≤50%, tepuk tangan kalau 100% penuh) -
   // hanya untuk Kehadiran & Apel, bukan Kegiatan Luar.
   if (pctInfo && type === "absen") {
-    if (pctInfo.pct <= 50) triggerStatReaction("😢");
+    if (pctInfo.pct <= 85) triggerStatReaction("😢");
     else if (pctInfo.pct >= 100) triggerStatReaction("👏");
   } else if (pctInfo && type === "apel") {
     if (pctInfo.pctPagi <= 50 || pctInfo.pctSiang <= 50) triggerStatReaction("😢");
     else if (pctInfo.pctPagi >= 100 && pctInfo.pctSiang >= 100) triggerStatReaction("👏");
   }
 
-  // Kartu identitas (NIP, Pangkat/Golongan, Jabatan) - khusus Kehadiran & Apel
+  // Kartu identitas (NIP, Pangkat/Golongan, Jabatan) - khusus Kehadiran & Apel.
+  // NIP hanya tampil saat Mode Admin aktif - pegawai lain tidak melihatnya.
   const identityEl = document.getElementById("statDetailIdentity");
   if (type === "absen" || type === "apel") {
     const pegawai = state.data.pegawai.find(p => p.Nama === nama);
+    const nipRow = state.isAdmin
+      ? `<div class="id-row"><span class="id-label">NIP</span><span class="id-value">${(pegawai && pegawai.NIP) || "-"}</span></div>`
+      : "";
     identityEl.innerHTML = `
       <div class="pegawai-id-card">
-        <div class="id-row"><span class="id-label">NIP</span><span class="id-value">${(pegawai && pegawai.NIP) || "-"}</span></div>
+        ${nipRow}
         <div class="id-row"><span class="id-label">Pangkat/Gol</span><span class="id-value">${(pegawai && pegawai.PangkatGolongan) || "-"}</span></div>
         <div class="id-row"><span class="id-label">Jabatan</span><span class="id-value">${(pegawai && pegawai.Jabatan) || "-"}</span></div>
       </div>
@@ -1303,3 +1472,312 @@ function showToast(msg, isError) {
 
 // hook stat kegiatan events once DOM ready
 document.addEventListener("DOMContentLoaded", setupStatKegiatanEvents);
+
+// ============================================================
+// EXPORT EXCEL
+// ============================================================
+let exportJenisTerpilih = null; // "absen" | "apel" | "kegiatan"
+
+function setupExportMenu() {
+  document.getElementById("exportToggleBtn").addEventListener("click", () => {
+    document.getElementById("exportChoices").classList.toggle("hidden");
+  });
+
+  document.querySelectorAll(".export-choice-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      exportJenisTerpilih = btn.dataset.jenis;
+      document.getElementById("exportChoices").classList.add("hidden");
+
+      const now = new Date();
+      const firstOfMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`;
+      const todayStr = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+      document.getElementById("exportDari").value = firstOfMonth;
+      document.getElementById("exportSampai").value = todayStr;
+
+      const judulMap = { absen: "Unduh Rekap Kehadiran", apel: "Unduh Rekap Apel", kegiatan: "Unduh Rekap Kegiatan Luar" };
+      document.getElementById("exportModalTitle").textContent = judulMap[exportJenisTerpilih];
+      updateExportSummary();
+      showModal("exportDateModal");
+    });
+  });
+
+  document.getElementById("exportDari").addEventListener("change", updateExportSummary);
+  document.getElementById("exportSampai").addEventListener("change", updateExportSummary);
+
+  document.getElementById("exportDownloadBtn").addEventListener("click", async () => {
+    const dari = document.getElementById("exportDari").value;
+    const sampai = document.getElementById("exportSampai").value;
+    if (!dari || !sampai || dari > sampai) {
+      showToast("Pilih rentang tanggal yang valid dulu.", true);
+      return;
+    }
+    const btn = document.getElementById("exportDownloadBtn");
+    const teksAsli = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Menyiapkan data...";
+    try {
+      // Pastikan semua bulan dalam rentang yang diminta sudah dimuat lengkap -
+      // rentang laporan bisa mencakup bulan-bulan yang belum pernah dibuka user
+      // di kalender/statistik, jadi datanya belum tentu sudah ada di state.data.
+      await ensureMonthsLoaded(monthKeysInRange(dari, sampai));
+      btn.textContent = "Membuat file...";
+      if (exportJenisTerpilih === "absen") await exportKehadiranExcel(dari, sampai);
+      else if (exportJenisTerpilih === "apel") await exportApelExcel(dari, sampai);
+      else if (exportJenisTerpilih === "kegiatan") await exportKegiatanExcel(dari, sampai);
+      hideModal("exportDateModal");
+      showToast("Rekap berhasil diunduh.");
+    } catch (err) {
+      showToast("Gagal membuat file Excel: " + err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = teksAsli;
+    }
+  });
+}
+
+function updateExportSummary() {
+  const dari = document.getElementById("exportDari").value;
+  const sampai = document.getElementById("exportSampai").value;
+  const el = document.getElementById("exportSummary");
+  if (!dari || !sampai) { el.textContent = ""; return; }
+  if (sampai < dari) { el.textContent = "Tanggal selesai tidak boleh sebelum tanggal mulai."; return; }
+  el.textContent = judulPeriode(dari, sampai);
+}
+
+// "BULAN: JULI 2026" kalau rentangnya pas 1 bulan penuh, atau "PERIODE: ..." kalau custom
+function judulPeriode(dari, sampai) {
+  const [y1, m1, d1] = dari.split("-").map(Number);
+  const [y2, m2, d2] = sampai.split("-").map(Number);
+  const lastDayBulan1 = new Date(y1, m1, 0).getDate();
+  const isSatuBulanPenuh = (d1 === 1 && y1 === y2 && m1 === m2 && d2 === lastDayBulan1);
+  if (isSatuBulanPenuh) return `BULAN: ${BULAN_ID[m1 - 1].toUpperCase()} ${y1}`;
+  if (y1 === y2 && m1 === m2) return `PERIODE: ${d1}-${d2} ${BULAN_ID[m1 - 1].toUpperCase()} ${y1}`;
+  return `PERIODE: ${d1} ${BULAN_ID[m1 - 1].toUpperCase()} ${y1} - ${d2} ${BULAN_ID[m2 - 1].toUpperCase()} ${y2}`;
+}
+
+async function downloadWorkbook(workbook, filename) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function setupJudulSheet(sheet, judulUtama, kolomTerakhir) {
+  sheet.mergeCells(1, 1, 1, kolomTerakhir);
+  sheet.getCell(1, 1).value = judulUtama;
+  sheet.mergeCells(2, 1, 2, kolomTerakhir);
+  sheet.getCell(2, 1).value = CONFIG.NAMA_INSTANSI_BARIS2.toUpperCase();
+  sheet.mergeCells(3, 1, 3, kolomTerakhir);
+  [1, 2, 3].forEach(r => {
+    const cell = sheet.getCell(r, 1);
+    cell.font = { bold: true, size: r === 1 ? 14 : 12 };
+    cell.alignment = { horizontal: "center" };
+  });
+}
+
+function styleHeaderRow(row) {
+  row.eachCell(cell => {
+    cell.font = { bold: true };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8E8E8" } };
+  });
+}
+
+function beriGarisTabel(sheet, dariBaris, sampaiBaris, jumlahKolom) {
+  for (let r = dariBaris; r <= sampaiBaris; r++) {
+    for (let c = 1; c <= jumlahKolom; c++) {
+      sheet.getCell(r, c).border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+    }
+  }
+}
+
+// ---------------- REKAP KEHADIRAN ----------------
+async function exportKehadiranExcel(dari, sampai) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Rekap Kehadiran");
+  const kolom = ["No", "Nama", "NIP", "Hadir", "Persentase Kehadiran", "Sakit", "Ijin", "Cuti", "Tanpa Berita", "Keterangan (Tanggal)"];
+  sheet.columns = [6, 30, 20, 8, 12, 8, 8, 8, 12, 40].map(w => ({ width: w }));
+
+  setupJudulSheet(sheet, "REKAPAN DAFTAR HADIR", kolom.length);
+  sheet.mergeCells(4, 1, 4, kolom.length);
+  sheet.getCell(4, 1).value = judulPeriode(dari, sampai);
+  sheet.getCell(4, 1).font = { bold: true };
+  sheet.getCell(4, 1).alignment = { horizontal: "center" };
+
+  sheet.getCell(5, 1).value = "JUMLAH HARI KERJA";
+  sheet.getCell(5, 1).font = { bold: true };
+  sheet.getCell(5, 2).value = countWorkingDaysInRange(dari, sampai);
+  sheet.getCell(5, 2).font = { bold: true };
+
+  const headerRowIdx = 7;
+  const headerRow = sheet.getRow(headerRowIdx);
+  kolom.forEach((k, i) => { headerRow.getCell(i + 1).value = k; });
+  styleHeaderRow(headerRow);
+
+  let baris = headerRowIdx + 1;
+  let no = 1;
+  state.data.pegawai.forEach(p => {
+    const rentang = hitungRentangAktifPegawai(p, dari, sampai);
+    if (!rentang) return; // pegawai belum/tidak lagi aktif di periode ini - lewati
+    const workingDays = countWorkingDaysInRange(rentang.mulai, rentang.selesai);
+    const catatan = state.data.absensi.filter(a =>
+      a.Nama === p.Nama && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai
+    );
+    const sakit = catatan.filter(a => a.Status === "Sakit");
+    const ijin = catatan.filter(a => a.Status === "Izin");
+    const cuti = catatan.filter(a => a.Status === "Cuti");
+    const alpa = catatan.filter(a => a.Status === "Alpa/Tanpa Keterangan");
+    const hadir = Math.max(workingDays - catatan.length, 0);
+    const pct = workingDays > 0 ? Math.round((hadir / workingDays) * 100) : 0;
+
+    const ket = [];
+    if (sakit.length) ket.push(`sakit tgl ${sakit.map(a => Number(a.Tanggal.split("-")[2])).join(",")}`);
+    if (ijin.length) ket.push(`ijin tgl ${ijin.map(a => Number(a.Tanggal.split("-")[2])).join(",")}`);
+    if (cuti.length) ket.push(`cuti tgl ${cuti.map(a => Number(a.Tanggal.split("-")[2])).join(",")}`);
+    if (alpa.length) ket.push(`tanpa berita tgl ${alpa.map(a => Number(a.Tanggal.split("-")[2])).join(",")}`);
+
+    const row = sheet.getRow(baris);
+    row.getCell(1).value = no++;
+    row.getCell(2).value = p.Nama;
+    row.getCell(3).value = p.NIP || "-";
+    row.getCell(4).value = hadir;
+    row.getCell(5).value = `${pct}%`;
+    row.getCell(6).value = sakit.length || "";
+    row.getCell(7).value = ijin.length || "";
+    row.getCell(8).value = cuti.length || "";
+    row.getCell(9).value = alpa.length || "";
+    row.getCell(10).value = ket.join("\n");
+    row.getCell(10).alignment = { wrapText: true, vertical: "top" };
+    row.eachCell(c => { c.alignment = c.alignment || { vertical: "middle" }; });
+    baris++;
+  });
+
+  beriGarisTabel(sheet, headerRowIdx, baris - 1, kolom.length);
+  await downloadWorkbook(workbook, `Rekap_Kehadiran_${dari}_sd_${sampai}.xlsx`);
+}
+
+// ---------------- REKAP APEL ----------------
+async function exportApelExcel(dari, sampai) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Rekap Apel");
+  const kolom = [
+    "No", "Nama",
+    "Ikut Apel Pagi", "% Pagi", "Tanggal Ikut Apel Pagi", "Tanggal Tidak Ikut Apel Pagi",
+    "Ikut Apel Siang", "% Siang", "Tanggal Ikut Apel Siang", "Tanggal Tidak Ikut Apel Siang"
+  ];
+  sheet.columns = [6, 26, 10, 8, 26, 26, 10, 8, 26, 26].map(w => ({ width: w }));
+
+  setupJudulSheet(sheet, "REKAPAN APEL PAGI & SIANG", kolom.length);
+  sheet.mergeCells(4, 1, 4, kolom.length);
+  sheet.getCell(4, 1).value = judulPeriode(dari, sampai);
+  sheet.getCell(4, 1).font = { bold: true };
+  sheet.getCell(4, 1).alignment = { horizontal: "center" };
+
+  const headerRowIdx = 6;
+  const headerRow = sheet.getRow(headerRowIdx);
+  kolom.forEach((k, i) => { headerRow.getCell(i + 1).value = k; });
+  styleHeaderRow(headerRow);
+
+  let baris = headerRowIdx + 1;
+  let no = 1;
+  state.data.pegawai.filter(pegawaiWajibApel).forEach(p => {
+    const rentang = hitungRentangAktifPegawai(p, dari, sampai);
+    if (!rentang) return;
+    const workingDays = countWorkingDaysInRange(rentang.mulai, rentang.selesai);
+    const workingDaysList = getWorkingDaysListInRange(rentang.mulai, rentang.selesai);
+
+    const absenDates = new Set(
+      state.data.absensi.filter(a => a.Nama === p.Nama && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai).map(a => a.Tanggal)
+    );
+    const missedPagi = new Set(absenDates);
+    state.data.apel.filter(a => a.Nama === p.Nama && a.Sesi === "Pagi" && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+      .forEach(a => missedPagi.add(a.Tanggal));
+    const missedSiang = new Set(absenDates);
+    state.data.apel.filter(a => a.Nama === p.Nama && a.Sesi === "Siang" && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+      .forEach(a => missedSiang.add(a.Tanggal));
+
+    const ikutPagiDates = workingDaysList.filter(t => !missedPagi.has(t));
+    const ikutSiangDates = workingDaysList.filter(t => !missedSiang.has(t));
+    const ikutPagi = ikutPagiDates.length;
+    const ikutSiang = ikutSiangDates.length;
+    const pctPagi = workingDays > 0 ? Math.round((ikutPagi / workingDays) * 100) : 0;
+    const pctSiang = workingDays > 0 ? Math.round((ikutSiang / workingDays) * 100) : 0;
+
+    const fmtTgl = (arr) => arr.length ? arr.map(t => Number(t.split("-")[2])).join(",") : "-";
+
+    const row = sheet.getRow(baris);
+    row.getCell(1).value = no++;
+    row.getCell(2).value = p.Nama;
+    row.getCell(3).value = ikutPagi;
+    row.getCell(4).value = `${pctPagi}%`;
+    row.getCell(5).value = fmtTgl(ikutPagiDates);
+    row.getCell(6).value = fmtTgl(Array.from(missedPagi).sort());
+    row.getCell(7).value = ikutSiang;
+    row.getCell(8).value = `${pctSiang}%`;
+    row.getCell(9).value = fmtTgl(ikutSiangDates);
+    row.getCell(10).value = fmtTgl(Array.from(missedSiang).sort());
+    [5, 6, 9, 10].forEach(c => { row.getCell(c).alignment = { wrapText: true, vertical: "top" }; });
+    baris++;
+  });
+
+  beriGarisTabel(sheet, headerRowIdx, baris - 1, kolom.length);
+  await downloadWorkbook(workbook, `Rekap_Apel_${dari}_sd_${sampai}.xlsx`);
+}
+
+// ---------------- REKAP KEGIATAN LUAR ----------------
+async function exportKegiatanExcel(dari, sampai) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Rekap Kegiatan Luar");
+  const kolom = ["No Urut", "Nomor Surat", "Tanggal", "Kegiatan", "Lokasi", "Nama Petugas"];
+  sheet.columns = [8, 14, 12, 28, 22, 30].map(w => ({ width: w }));
+
+  setupJudulSheet(sheet, "REKAPAN KEGIATAN LUAR GEDUNG", kolom.length);
+  sheet.mergeCells(4, 1, 4, kolom.length);
+  sheet.getCell(4, 1).value = judulPeriode(dari, sampai);
+  sheet.getCell(4, 1).font = { bold: true };
+  sheet.getCell(4, 1).alignment = { horizontal: "center" };
+
+  const headerRowIdx = 6;
+  const headerRow = sheet.getRow(headerRowIdx);
+  kolom.forEach((k, i) => { headerRow.getCell(i + 1).value = k; });
+  styleHeaderRow(headerRow);
+
+  // Kelompokkan baris-baris dengan No ST + Nama Kegiatan + Lokasi + Tanggal
+  // yang sama jadi 1 baris (sama seperti kartu kegiatan di kalender)
+  const groups = {};
+  state.data.kegiatanLuar
+    .filter(k => k.Tanggal >= dari && k.Tanggal <= sampai)
+    .forEach(k => {
+      const key = `${k.NoST || ""}|${k.Tanggal}|${k.NamaKegiatan || ""}|${k.Lokasi || ""}`;
+      if (!groups[key]) groups[key] = { info: k, nama: [] };
+      groups[key].nama.push(k.Nama);
+    });
+
+  const daftar = Object.values(groups).sort((a, b) => a.info.Tanggal.localeCompare(b.info.Tanggal));
+
+  let baris = headerRowIdx + 1;
+  let no = 1;
+  daftar.forEach(g => {
+    const row = sheet.getRow(baris);
+    row.getCell(1).value = no++;
+    row.getCell(2).value = g.info.NoST || "-";
+    row.getCell(3).value = formatTanggalIndo(g.info.Tanggal);
+    row.getCell(4).value = g.info.NamaKegiatan || "-";
+    row.getCell(5).value = g.info.Lokasi || "-";
+    row.getCell(6).value = g.nama.join("\n");
+    row.getCell(6).alignment = { wrapText: true, vertical: "top" };
+    row.getCell(4).alignment = { wrapText: true, vertical: "top" };
+    baris++;
+  });
+
+  beriGarisTabel(sheet, headerRowIdx, baris - 1, kolom.length);
+  await downloadWorkbook(workbook, `Rekap_Kegiatan_Luar_${dari}_sd_${sampai}.xlsx`);
+}
+

@@ -37,7 +37,9 @@ function doGet(e) {
   try {
     var action = (e.parameter && e.parameter.action) || 'data';
     if (action === 'data') {
-      return jsonResponse(getAllData());
+      var dari = e.parameter && e.parameter.dari;
+      var sampai = e.parameter && e.parameter.sampai;
+      return jsonResponse(getAllData(dari, sampai));
     }
     return jsonResponse({ error: 'Aksi tidak dikenal: ' + action });
   } catch (err) {
@@ -178,14 +180,29 @@ function getOrCreateApelSheet() {
   return sheet;
 }
 
-function getAllData() {
+function getAllData(dari, sampai) {
   return {
     pegawai: sheetToObjects(getSheet(SHEET_PEGAWAI)),
-    absensi: sheetToObjects(getSheet(SHEET_ABSENSI)),
-    kegiatanLuar: sheetToObjects(getSheet(SHEET_KEGIATAN)),
+    absensi: filterByTanggal(sheetToObjects(getSheet(SHEET_ABSENSI)), dari, sampai),
+    kegiatanLuar: filterByTanggal(sheetToObjects(getSheet(SHEET_KEGIATAN)), dari, sampai),
     libur: getGabunganLibur(),
-    apel: sheetToObjects(getOrCreateApelSheet())
+    apel: filterByTanggal(sheetToObjects(getOrCreateApelSheet()), dari, sampai)
   };
+}
+
+// Kalau dari/sampai diisi (format teks "yyyy-MM-dd"), hanya kembalikan baris yang
+// kolom Tanggal-nya jatuh di rentang itu - supaya dashboard tidak perlu menarik
+// SELURUH riwayat setiap kali dibuka (yang lama-lama pasti makin berat kalau data
+// menumpuk bertahun-tahun). Kalau dari/sampai kosong, kembalikan semua (perilaku lama).
+function filterByTanggal(list, dari, sampai) {
+  if (!dari && !sampai) return list;
+  return list.filter(function (item) {
+    var t = item.Tanggal;
+    if (!t) return false;
+    if (dari && t < dari) return false;
+    if (sampai && t > sampai) return false;
+    return true;
+  });
 }
 
 // Gabungan: libur nasional (otomatis dari Google Calendar) + libur manual (dari sheet Libur)
@@ -400,20 +417,26 @@ function perbaikiFormatTanggalLama() {
 function syncApelHari(d) {
   var sheet = getOrCreateApelSheet();
   var existing = sheetToObjects(sheet);
-  var rowsToDelete = existing
-    .filter(function (r) { return r.Tanggal === d.Tanggal; })
-    .map(function (r) { return r._row; })
-    .sort(function (a, b) { return b - a; }); // hapus dari bawah ke atas
-  rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
 
-  var rows = [];
+  // Baris untuk tanggal LAIN tetap dipertahankan apa adanya.
+  var rows = existing
+    .filter(function (r) { return r.Tanggal !== d.Tanggal; })
+    .map(function (r) { return [r.Tanggal, r.Nama, r.Sesi, r.Keterangan || '']; });
+
+  // Baris untuk tanggal ini ditulis ulang dari daftar terbaru yang dikirim admin.
   (d.PagiList || []).forEach(function (nama) { rows.push([d.Tanggal, nama, 'Pagi', '']); });
   (d.SiangList || []).forEach(function (nama) { rows.push([d.Tanggal, nama, 'Siang', '']); });
 
+  // Kosongkan dulu SELURUH isi data lama (bukan hapus baris satu-satu -
+  // clearContent 1x jauh lebih cepat daripada deleteRow berkali-kali,
+  // dan kecepatannya tidak akan menurun walau datanya sudah bertahun-tahun).
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 4).clearContent();
+  }
   if (rows.length > 0) {
-    var startRow = sheet.getLastRow() + 1;
-    sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat('@'); // kolom Tanggal sebagai teks
-    sheet.getRange(startRow, 1, rows.length, 4).setValues(rows);
+    sheet.getRange(2, 1, rows.length, 1).setNumberFormat('@'); // kolom Tanggal sebagai teks
+    sheet.getRange(2, 1, rows.length, 4).setValues(rows); // satu kali tulis untuk semua baris
   }
 
   // Kembalikan seluruh data Apel terbaru (dataset ini biasanya kecil,

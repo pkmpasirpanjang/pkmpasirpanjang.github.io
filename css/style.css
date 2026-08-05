@@ -39,6 +39,54 @@ html, body {
 }
 
 /* ============================================================
+   RIPPLE EFFECT (riak air sungguhan - beberapa cincin konsentris
+   menyusul satu sama lain, melebar pelan lalu memudar, muncul di
+   titik manapun yang diklik/disentuh)
+   ============================================================ */
+.ripple-flash {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.25) 55%, rgba(255,255,255,0) 75%);
+  pointer-events: none;
+  z-index: 9999;
+  transform: scale(0.6);
+  opacity: 0.9;
+  animation: rippleFlash 0.4s ease-out forwards;
+}
+@keyframes rippleFlash {
+  to { transform: scale(1.5); opacity: 0; }
+}
+.ripple-ring {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.55);
+  box-shadow: 0 0 3px rgba(255,255,255,0.3), inset 0 0 3px rgba(255,255,255,0.18);
+  pointer-events: none;
+  z-index: 9999;
+  transform: scale(0);
+  opacity: 0.65;
+  animation: rippleRing 0.75s cubic-bezier(0.15, 0.65, 0.35, 1) forwards;
+}
+@keyframes rippleRing {
+  0%   { transform: scale(0)   rotate(0deg);   opacity: 0.65; border-width: 2.5px; }
+  30%  { transform: scale(2.6) rotate(4deg)  scaleX(1.05) scaleY(0.96); opacity: 0.5; }
+  60%  { transform: scale(6)   rotate(-3deg) scaleX(0.97) scaleY(1.04); opacity: 0.28; border-width: 1px; }
+  100% { transform: scale(15)  rotate(0deg);   opacity: 0;    border-width: 0.4px; }
+}
+
+/* ============================================================
    BACKGROUND VIDEO
    ============================================================ */
 .bg-video-wrap {
@@ -225,7 +273,8 @@ h2 {
   text-align: center;
   font-size: 12px;
   color: var(--text-muted);
-  margin: -8px 0 12px;
+  margin: 0 auto 14px;
+  max-width: 1000px;
 }
 
 .calendar-weekdays {
@@ -456,7 +505,7 @@ h2 {
   opacity: 0;
 }
 .reaction-overlay.hidden { display: none; }
-.reaction-overlay.show { display: flex; animation: reactionPop 1000ms ease forwards; }
+.reaction-overlay.show { display: flex; animation: reactionPop 2000ms ease forwards; }
 @keyframes reactionPop {
   0% { opacity: 0; transform: scale(0.4); }
   18% { opacity: 1; transform: scale(1.2); }
@@ -793,6 +842,67 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
 .social-links a:hover { transform: scale(1.08); }
 
 /* ============================================================
+   EXPORT EXCEL MENU (mengambang, persis di atas menu sosial media)
+   ============================================================ */
+.export-menu {
+  position: fixed;
+  bottom: 92px; /* 24px (jarak social-menu ke bawah) + 52px (tinggi tombol) + 16px (jarak antar menu) */
+  right: 24px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  transition: transform 0.25s ease;
+}
+.export-toggle {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s;
+}
+.export-toggle:hover { transform: scale(1.06); }
+.export-toggle img { width: 26px; height: 26px; }
+.export-toggle svg { display: block; }
+.export-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.export-choice-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px 0 14px;
+  border-radius: 999px;
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+  color: var(--text-light);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.export-choice-btn:hover { transform: scale(1.04); background: var(--accent-teal); color: #06231C; }
+.export-choice-icon { font-size: 16px; line-height: 1; }
+@media (max-width: 560px) {
+  .export-menu { bottom: 86px; right: 18px; }
+  .social-menu { right: 18px; }
+}
+
+/* ============================================================
    CHECKBOX LIST (pilih banyak pegawai kegiatan luar)
    ============================================================ */
 .label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
@@ -888,7 +998,9 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   .stat-row { grid-template-columns: 90px 1fr 44px; font-size: 12px; }
   .calendar-grid { gap: 4px; }
   .cal-cell { padding: 3px 2px; border-radius: 7px; }
-  .cal-badge-count { font-size: 9px; padding: 1px 4px; }
+  .cal-badges { flex-direction: column; gap: 2px; }
+  .cal-badge-count { font-size: 9px; padding: 1px 4px; gap: 2px; }
+  .dot { width: 5px; height: 5px; }
 
   /* 4 tombol tab tampilan dipaksa jadi grid 2 kolom tetap - selalu rapi
      2x2, tidak lagi wrap acak (2+1+1) tergantung panjang tulisannya. */
@@ -910,4 +1022,13 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
     flex-direction: column;
   }
   .tabs-row.tabs-admin .tab-btn { width: 100%; }
+}
+
+/* HP dengan layar sangat sempit (mis. lebar < 400px) - ketatkan sedikit
+   lagi supaya 2 badge tersusun (tidak masuk & kegiatan luar) tetap muat
+   penuh tanpa terpotong. */
+@media (max-width: 400px) {
+  .cal-cell { gap: 1px; padding: 2px 1px; }
+  .cal-daynum { font-size: 13px; }
+  .cal-badge-count { font-size: 8px; padding: 0 3px; }
 }

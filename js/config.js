@@ -22,7 +22,6 @@ const CONFIG = {
 
   KEGIATAN_RUTIN: [
     "Pelayanan Imunisasi Rutin",
-    "Pelayanan di Posyandu ILP",
     "Skrining Faktor Risiko PTM",
     "Skrining Lansia"
   ],
