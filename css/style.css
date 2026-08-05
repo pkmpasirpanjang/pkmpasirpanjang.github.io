@@ -23,6 +23,30 @@
 
 * { box-sizing: border-box; }
 
+/* ============================================================
+   EFEK TEKAN (press feedback) - elemen sedikit mengecil sesaat saat
+   ditekan/disentuh, ringan & tidak menutupi konten (cocok untuk HP).
+   Menggantikan efek ripple sebelumnya yang kurang nyaman di mobile.
+   ============================================================ */
+button,
+.cal-cell:not(.empty),
+.stat-row,
+.social-links a,
+.modal-item.editable,
+.person-chip.editable {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+button:active,
+.cal-cell:not(.empty):active,
+.stat-row:active,
+.social-links a:active,
+.modal-item.editable:active,
+.person-chip.editable:active {
+  transform: scale(0.94);
+  filter: brightness(0.96);
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -36,54 +60,6 @@ html, body {
 /* respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
-}
-
-/* ============================================================
-   RIPPLE EFFECT (riak air sungguhan - beberapa cincin konsentris
-   menyusul satu sama lain, melebar pelan lalu memudar, muncul di
-   titik manapun yang diklik/disentuh)
-   ============================================================ */
-.ripple-flash {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 14px;
-  height: 14px;
-  margin-left: -7px;
-  margin-top: -7px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.25) 55%, rgba(255,255,255,0) 75%);
-  pointer-events: none;
-  z-index: 9999;
-  transform: scale(0.6);
-  opacity: 0.9;
-  animation: rippleFlash 0.4s ease-out forwards;
-}
-@keyframes rippleFlash {
-  to { transform: scale(1.5); opacity: 0; }
-}
-.ripple-ring {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 10px;
-  height: 10px;
-  margin-left: -5px;
-  margin-top: -5px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255,255,255,0.55);
-  box-shadow: 0 0 3px rgba(255,255,255,0.3), inset 0 0 3px rgba(255,255,255,0.18);
-  pointer-events: none;
-  z-index: 9999;
-  transform: scale(0);
-  opacity: 0.65;
-  animation: rippleRing 0.75s cubic-bezier(0.15, 0.65, 0.35, 1) forwards;
-}
-@keyframes rippleRing {
-  0%   { transform: scale(0)   rotate(0deg);   opacity: 0.65; border-width: 2.5px; }
-  30%  { transform: scale(2.6) rotate(4deg)  scaleX(1.05) scaleY(0.96); opacity: 0.5; }
-  60%  { transform: scale(6)   rotate(-3deg) scaleX(0.97) scaleY(1.04); opacity: 0.28; border-width: 1px; }
-  100% { transform: scale(15)  rotate(0deg);   opacity: 0;    border-width: 0.4px; }
 }
 
 /* ============================================================
@@ -317,7 +293,8 @@ h2 {
   gap: 3px;
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
-.cal-cell:hover { background: var(--glass-bg-strong); border-color: var(--glass-border); transform: translateY(-2px); }
+.cal-cell:hover { background: var(--glass-bg-strong); border-color: var(--glass-border); transform: translateY(-2px); transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease; }
+.cal-cell:active { transform: scale(0.96) translateY(-2px); }
 .cal-cell.empty { visibility: hidden; cursor: default; }
 .cal-cell.today { border-color: var(--accent-gold); background: rgba(232,172,62,0.10); }
 .cal-daynum {

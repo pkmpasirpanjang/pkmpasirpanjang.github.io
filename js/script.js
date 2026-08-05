@@ -42,7 +42,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupModals();
   setupAdmin();
   setupExportMenu();
-  setupRippleEffect();
 
   // Kalau ada data dari kunjungan sebelumnya tersimpan di perangkat ini,
   // tampilkan dulu itu SEKARANG JUGA (walau mungkin sedikit basi), supaya
@@ -228,49 +227,6 @@ function setupTabs() {
 // ============================================================
 // SOCIAL MENU
 // ============================================================
-// ============================================================
-// EFEK RIPPLE / RIAK AIR (muncul di titik manapun yang diklik/disentuh -
-// termasuk area kosong sekalipun, bukan cuma tombol). Terdiri dari 1
-// kilatan kecil di titik sentuh + beberapa cincin konsentris yang
-// menyusul bertahap, melebar pelan lalu memudar - meniru riak air
-// sungguhan, bukan cuma 1 lingkaran membesar (yang kelihatan seperti asap).
-// Murni CSS animation (elemen dibuang otomatis dari halaman setelah
-// animasi selesai), jadi ringan walau diklik berkali-kali cepat.
-// ============================================================
-function setupRippleEffect() {
-  const kurangiAnimasi = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (kurangiAnimasi) return; // hormati pengaturan aksesibilitas pengguna
-
-  document.addEventListener("pointerdown", (e) => {
-    // Hanya untuk klik kiri mouse / sentuhan jari, bukan klik kanan dsb.
-    if (e.button !== undefined && e.button !== 0) return;
-    spawnRippleAt(e.clientX, e.clientY);
-  }, { passive: true });
-}
-
-function spawnRippleAt(x, y) {
-  const buatElemen = (className, delayMs, umurMs) => {
-    const el = document.createElement("span");
-    el.className = className;
-    el.style.left = x + "px";
-    el.style.top = y + "px";
-    if (delayMs) el.style.animationDelay = delayMs + "ms";
-    document.body.appendChild(el);
-    el.addEventListener("animationend", () => el.remove());
-    setTimeout(() => el.remove(), umurMs); // jaring pengaman kalau animationend tidak terpicu
-  };
-
-  buatElemen("ripple-flash", 0, 500);
-  // 3 cincin menyusul bertahap dengan jeda singkat - persis seperti riak
-  // air asli yang menyebar dalam beberapa gelombang, bukan cuma 1 lingkaran.
-  // Total durasi keseluruhan dijaga sekitar 1 detik saja supaya cepat hilang.
-  const JUMLAH_CINCIN = 3;
-  const JEDA_ANTAR_CINCIN = 110; // ms
-  for (let i = 0; i < JUMLAH_CINCIN; i++) {
-    buatElemen("ripple-ring", i * JEDA_ANTAR_CINCIN, 750 + i * JEDA_ANTAR_CINCIN + 150);
-  }
-}
-
 function applySocialLinks() {
   document.getElementById("socialWa").href = CONFIG.SOSMED.whatsapp;
   document.getElementById("socialFb").href = CONFIG.SOSMED.facebook;
