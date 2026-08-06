@@ -875,8 +875,14 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
 .export-choice-btn:hover { transform: scale(1.04); background: var(--accent-teal); color: #06231C; }
 .export-choice-icon { font-size: 16px; line-height: 1; }
 @media (max-width: 560px) {
-  .export-menu { bottom: 86px; right: 18px; }
-  .social-menu { right: 18px; }
+  .export-menu { bottom: 76px; right: 16px; }
+  .social-menu { bottom: 20px; right: 16px; }
+  .social-toggle, .export-toggle { width: 40px; height: 40px; }
+  .social-toggle img, .export-toggle img { width: 18px; height: 18px; }
+  .export-toggle svg { width: 19px; height: 19px; }
+  .social-links a { width: 36px; height: 36px; }
+  .social-links a img { width: 18px; height: 18px; }
+  .export-choice-btn { height: 36px; padding: 0 14px 0 12px; font-size: 12px; }
 }
 
 /* ============================================================
