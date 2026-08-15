@@ -17,6 +17,12 @@
  * Setiap kali Anda ubah kode ini, harus Deploy > Manage deployments
  * > edit (pensil) > Version: New version > Deploy ulang, supaya
  * perubahan kode benar-benar aktif di URL yang sama.
+ *
+ * KHUSUS SEKALI SAJA saat pertama kali memasang kode versi ini (yang
+ * sudah punya pembacaan data lebih cepat): pilih fungsi
+ * "urutkanUlangSemuaDataLama" di dropdown sebelah tombol Run, lalu klik
+ * Run - ini mengurutkan data yang sudah ada sekarang berdasarkan tanggal
+ * (wajib, sekali saja). Setelah itu baru Deploy seperti biasa.
  * ============================================================
  */
 
@@ -182,27 +188,93 @@ function getOrCreateApelSheet() {
 
 function getAllData(dari, sampai) {
   return {
-    pegawai: sheetToObjects(getSheet(SHEET_PEGAWAI)),
-    absensi: filterByTanggal(sheetToObjects(getSheet(SHEET_ABSENSI)), dari, sampai),
-    kegiatanLuar: filterByTanggal(sheetToObjects(getSheet(SHEET_KEGIATAN)), dari, sampai),
-    libur: getGabunganLibur(),
-    apel: filterByTanggal(sheetToObjects(getOrCreateApelSheet()), dari, sampai)
+    pegawai: sheetToObjects(getSheet(SHEET_PEGAWAI)), // sheet kecil, baca semua tetap aman
+    absensi: filterByTanggalOptimized(getSheet(SHEET_ABSENSI), 1, 4, dari, sampai),
+    kegiatanLuar: filterByTanggalOptimized(getSheet(SHEET_KEGIATAN), 2, 5, dari, sampai),
+    libur: getGabunganLibur(), // sheet kecil, baca semua tetap aman
+    apel: filterByTanggalOptimized(getOrCreateApelSheet(), 1, 4, dari, sampai)
   };
 }
 
-// Kalau dari/sampai diisi (format teks "yyyy-MM-dd"), hanya kembalikan baris yang
-// kolom Tanggal-nya jatuh di rentang itu - supaya dashboard tidak perlu menarik
-// SELURUH riwayat setiap kali dibuka (yang lama-lama pasti makin berat kalau data
-// menumpuk bertahun-tahun). Kalau dari/sampai kosong, kembalikan semua (perilaku lama).
-function filterByTanggal(list, dari, sampai) {
-  if (!dari && !sampai) return list;
-  return list.filter(function (item) {
-    var t = item.Tanggal;
-    if (!t) return false;
-    if (dari && t < dari) return false;
-    if (sampai && t > sampai) return false;
-    return true;
+// ============================================================
+// PEMBACAAN DATA TERARAH (per rentang tanggal) - PENTING untuk performa
+// ============================================================
+// Dipakai untuk sheet Absensi/KegiatanLuar/Apel yang terus bertambah
+// bertahun-tahun. Daripada membaca SEMUA baris lalu membuang yang di luar
+// rentang (cara lama), di sini kita:
+//   1) baca HANYA kolom Tanggal dulu (1 kolom, jauh lebih ringan daripada
+//      semua kolom x semua baris),
+//   2) cari batas rentang lewat binary search DI MEMORI (bukan API call),
+//      ini valid karena sheet selalu dijaga terurut menaik berdasarkan
+//      tanggal oleh sortSheetByDate() setiap kali ada data baru disimpan,
+//   3) baru baca 1 kali rentang baris yang benar-benar relevan saja.
+// Hasilnya: waktu baca sebanding dengan JUMLAH DATA DI RENTANG YANG DIMINTA
+// (biasanya 1 bulan), bukan sebanding dengan seluruh riwayat yang menumpuk.
+//
+// Kalau dari/sampai kosong (tidak ada filter), tetap baca semua seperti biasa.
+function filterByTanggalOptimized(sheet, dateCol, jumlahKolom, dari, sampai) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  if (!dari && !sampai) return sheetToObjects(sheet);
+
+  var dateValues = sheet.getRange(2, dateCol, lastRow - 1, 1).getValues();
+  var dates = dateValues.map(function (r) {
+    var v = r[0];
+    return v instanceof Date ? Utilities.formatDate(v, TIMEZONE, 'yyyy-MM-dd') : String(v);
   });
+
+  var startIdx = dari ? lowerBound(dates, dari) : 0;
+  var endIdx = sampai ? upperBound(dates, sampai) : dates.length;
+  if (startIdx >= endIdx) return [];
+
+  var startRow = 2 + startIdx; // +2: baris 1 = header, dates[0] = baris 2
+  var numRows = endIdx - startIdx;
+  var headers = sheet.getRange(1, 1, 1, jumlahKolom).getValues()[0];
+  var values = sheet.getRange(startRow, 1, numRows, jumlahKolom).getValues();
+
+  var out = [];
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      var val = row[j];
+      if (val instanceof Date) val = Utilities.formatDate(val, TIMEZONE, 'yyyy-MM-dd');
+      obj[headers[j]] = val;
+    }
+    obj._row = startRow + i;
+    out.push(obj);
+  }
+  return out;
+}
+
+// Index pertama di array terurut "arr" yang nilainya >= target
+function lowerBound(arr, target) {
+  var lo = 0, hi = arr.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >> 1;
+    if (arr[mid] < target) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+// Index pertama di array terurut "arr" yang nilainya > target
+function upperBound(arr, target) {
+  var lo = 0, hi = arr.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >> 1;
+    if (arr[mid] <= target) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// Mengurutkan ulang sheet berdasarkan kolom tanggal (menaik). Dipanggil
+// otomatis setiap kali ada data baru ditambah/diubah di Absensi & KegiatanLuar,
+// supaya filterByTanggalOptimized() di atas selalu valid melakukan binary
+// search. Baris kosong di bawah data tidak ikut tersentuh.
+function sortSheetByDate(sheet, dateCol) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 3) return; // 0 atau 1 baris data - tidak perlu diurutkan
+  var lastCol = sheet.getLastColumn();
+  sheet.getRange(2, 1, lastRow - 1, lastCol).sort({ column: dateCol, ascending: true });
 }
 
 // Gabungan: libur nasional (otomatis dari Google Calendar) + libur manual (dari sheet Libur)
@@ -279,7 +351,26 @@ function addAbsensi(d) {
   var row = sheet.getLastRow() + 1;
   writeTanggalAsText(sheet, row, 1, d.Tanggal);
   sheet.getRange(row, 2, 1, 3).setValues([[d.Nama, d.Status, d.Keterangan || '']]);
-  return { _row: row, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
+  sortSheetByDate(sheet, 1);
+  // Baris yang baru ditambah bisa saja sudah berpindah posisi setelah
+  // diurutkan - cari lagi baris aslinya sebelum dikembalikan ke frontend.
+  var rowSekarang = cariBarisAbsensi(sheet, d.Tanggal, d.Nama, d.Status, d.Keterangan || '');
+  return { _row: rowSekarang, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
+}
+
+// Setelah sortSheetByDate() dijalankan, baris yang baru saja ditulis bisa
+// pindah posisi - fungsi ini mencarinya kembali berdasarkan isinya (dipanggil
+// tepat setelah menulis, jadi kombinasi Tanggal+Nama+Status+Keterangan ini
+// pasti masih unik/baru saja ditulis).
+function cariBarisAbsensi(sheet, tanggal, nama, status, keterangan) {
+  var data = sheetToObjects(sheet);
+  for (var i = data.length - 1; i >= 0; i--) {
+    var r = data[i];
+    if (r.Tanggal === tanggal && r.Nama === nama && r.Status === status && (r.Keterangan || '') === keterangan) {
+      return r._row;
+    }
+  }
+  return sheet.getLastRow(); // fallback (seharusnya tidak pernah terjadi)
 }
 
 // Mencatat 1 pegawai tidak hadir untuk banyak tanggal sekaligus (cuti/sakit panjang).
@@ -302,9 +393,11 @@ function addAbsensiRange(d) {
 
   var startRow = sheet.getLastRow() + 1;
   sheet.getRange(startRow, 1, rows.length, 4).setValues(rows);
-  return rows.map(function (r, i) {
-    return { _row: startRow + i, Tanggal: r[0], Nama: r[1], Status: r[2], Keterangan: r[3] };
-  });
+  sortSheetByDate(sheet, 1);
+  // Tidak perlu lagi mencari _row akhir tiap baris di sini - setelah
+  // diurutkan, frontend akan mengambil ulang data segar dari server
+  // (lihat sendAction() di forms.js) alih-alih menempel _row lama.
+  return { jumlah: rows.length, Nama: d.Nama, Status: d.Status };
 }
 
 // Mengubah teks "yyyy-MM-dd" jadi objek Date (tengah malam, sesuai TIMEZONE puskesmas)
@@ -317,7 +410,9 @@ function updateAbsensi(d) {
   var sheet = getSheet(SHEET_ABSENSI);
   writeTanggalAsText(sheet, d._row, 1, d.Tanggal);
   sheet.getRange(d._row, 2, 1, 3).setValues([[d.Nama, d.Status, d.Keterangan || '']]);
-  return { _row: d._row, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
+  sortSheetByDate(sheet, 1);
+  var rowSekarang = cariBarisAbsensi(sheet, d.Tanggal, d.Nama, d.Status, d.Keterangan || '');
+  return { _row: rowSekarang, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
 }
 
 function addKegiatan(d) {
@@ -326,6 +421,7 @@ function addKegiatan(d) {
   sheet.getRange(row, 1).setValue(d.NoST || '');
   writeTanggalAsText(sheet, row, 2, d.Tanggal);
   sheet.getRange(row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, d.Nama]]);
+  sortSheetByDate(sheet, 2);
   return true;
 }
 
@@ -347,10 +443,11 @@ function addKegiatanMulti(d) {
   // Satu panggilan setValues untuk semua baris sekaligus (jauh lebih cepat
   // daripada menulis baris demi baris satu-satu).
   sheet.getRange(startRow, 1, rows.length, 5).setValues(rows);
-
-  return rows.map(function (r, i) {
-    return { _row: startRow + i, NoST: r[0], Tanggal: r[1], NamaKegiatan: r[2], Lokasi: r[3], Nama: r[4] };
-  });
+  sortSheetByDate(sheet, 2);
+  // Sama seperti addAbsensiRange - frontend mengambil ulang data segar
+  // setelah ini (lihat sendAction() di forms.js), jadi tidak perlu lagi
+  // mencari _row akhir tiap baris di sini.
+  return { jumlah: rows.length, NamaKegiatan: d.NamaKegiatan, Lokasi: d.Lokasi };
 }
 
 function updateKegiatan(d) {
@@ -358,7 +455,23 @@ function updateKegiatan(d) {
   sheet.getRange(d._row, 1).setValue(d.NoST || '');
   writeTanggalAsText(sheet, d._row, 2, d.Tanggal);
   sheet.getRange(d._row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, d.Nama]]);
-  return { _row: d._row, NoST: d.NoST || '', Tanggal: d.Tanggal, NamaKegiatan: d.NamaKegiatan, Lokasi: d.Lokasi, Nama: d.Nama };
+  sortSheetByDate(sheet, 2);
+  var rowSekarang = cariBarisKegiatan(sheet, d.NoST || '', d.Tanggal, d.NamaKegiatan, d.Lokasi, d.Nama);
+  return { _row: rowSekarang, NoST: d.NoST || '', Tanggal: d.Tanggal, NamaKegiatan: d.NamaKegiatan, Lokasi: d.Lokasi, Nama: d.Nama };
+}
+
+// Sama seperti cariBarisAbsensi() - dipakai setelah sortSheetByDate() supaya
+// _row yang dikembalikan ke frontend selalu akurat.
+function cariBarisKegiatan(sheet, noST, tanggal, namaKegiatan, lokasi, nama) {
+  var data = sheetToObjects(sheet);
+  for (var i = data.length - 1; i >= 0; i--) {
+    var r = data[i];
+    if ((r.NoST || '') === noST && r.Tanggal === tanggal && r.NamaKegiatan === namaKegiatan &&
+        r.Lokasi === lokasi && r.Nama === nama) {
+      return r._row;
+    }
+  }
+  return sheet.getLastRow(); // fallback (seharusnya tidak pernah terjadi)
 }
 
 // Set format kolom jadi Plain Text ("@") SEBELUM isi nilainya, supaya
@@ -427,6 +540,11 @@ function syncApelHari(d) {
   (d.PagiList || []).forEach(function (nama) { rows.push([d.Tanggal, nama, 'Pagi', '']); });
   (d.SiangList || []).forEach(function (nama) { rows.push([d.Tanggal, nama, 'Siang', '']); });
 
+  // Urutkan berdasarkan Tanggal sebelum ditulis ulang - sheet Apel harus
+  // selalu terurut menaik (sama seperti Absensi & KegiatanLuar) supaya
+  // pembacaan data per-bulan (filterByTanggalOptimized) tetap valid.
+  rows.sort(function (a, b) { return a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0); });
+
   // Kosongkan dulu SELURUH isi data lama (bukan hapus baris satu-satu -
   // clearContent 1x jauh lebih cepat daripada deleteRow berkali-kali,
   // dan kecepatannya tidak akan menurun walau datanya sudah bertahun-tahun).
@@ -442,6 +560,20 @@ function syncApelHari(d) {
   // Kembalikan seluruh data Apel terbaru (dataset ini biasanya kecil,
   // jadi aman dan lebih simpel daripada melacak nomor baris satu-satu).
   return sheetToObjects(sheet);
+}
+
+// PENTING - jalankan fungsi ini SEKALI SAJA lewat tombol "Run" di Apps Script
+// (pilih fungsi ini dulu di dropdown sebelah tombol Run) SEBELUM men-deploy
+// versi kode ini. Ini mengurutkan data yang SUDAH ADA sekarang berdasarkan
+// tanggal - wajib dilakukan sekali di awal, karena pembacaan data yang lebih
+// cepat (filterByTanggalOptimized) di kode ini mengasumsikan data sudah urut.
+// Setelah ini dijalankan sekali, sheet akan otomatis tetap terurut dengan
+// sendirinya setiap kali ada data baru disimpan lewat dashboard.
+function urutkanUlangSemuaDataLama() {
+  sortSheetByDate(getSheet(SHEET_ABSENSI), 1);
+  sortSheetByDate(getSheet(SHEET_KEGIATAN), 2);
+  sortSheetByDate(getOrCreateApelSheet(), 1);
+  Logger.log('Selesai - sheet Absensi, KegiatanLuar, dan Apel sudah diurutkan berdasarkan tanggal.');
 }
 
 function deleteRow(sheetName, rowNumber) {
