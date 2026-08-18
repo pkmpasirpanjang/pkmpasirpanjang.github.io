@@ -396,7 +396,7 @@ function openStatDetail(nama, type, pctInfo) {
         return `
         <div class="modal-item kegiatan-card" style="border-left-color:${warna}">
           <div class="item-title" style="color:${warna}">${c.NamaKegiatan || "(tanpa nama kegiatan)"}</div>
-          <div class="item-sub">${formatTanggalIndo(c.Tanggal)} · 📍 ${c.Lokasi}${c.NoST ? `<span class="st-tag">No.ST: ${c.NoST}</span>` : ""}</div>
+          <div class="item-sub">${formatTanggalIndo(c.Tanggal)} · 📍 ${c.Lokasi}${c.NoST ? `<span class="st-tag">No.ST: ${c.NoST}</span>` : `<span class="st-tag st-pending">⏳ Menunggu Nomor</span>`}</div>
         </div>`;
       }).join("");
     }

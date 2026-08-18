@@ -628,6 +628,11 @@ h2 {
   color: var(--accent-gold);
   letter-spacing: 0.02em;
 }
+.st-tag.st-pending {
+  background: rgba(228,98,111,0.16);
+  border-color: rgba(228,98,111,0.4);
+  color: #E4626F;
+}
 
 .status-chip {
   display: inline-block;

@@ -221,6 +221,10 @@ async function deleteAbsen() {
 function openKegiatanForm(existing) {
   document.getElementById("kegiatanRow").value = existing ? existing._row : "";
   document.getElementById("kegiatanNoST").value = existing ? (existing.NoST || "") : "";
+  // Nomor surat tugas cuma bisa diedit manual di mode EDIT (misal ada typo);
+  // saat menambah kegiatan baru, nomornya sengaja dikosongkan dan baru diisi
+  // lewat tombol "Beri Nomor Surat Tugas" di mode admin.
+  document.getElementById("kegiatanNoSTWrap").classList.toggle("hidden", !existing);
   document.getElementById("kegiatanLokasi").value = existing ? existing.Lokasi : "";
 
   const select = document.getElementById("kegiatanNamaSelect");
@@ -267,11 +271,13 @@ async function submitKegiatan(e) {
     : select.value;
 
   const basePayload = {
-    NoST: document.getElementById("kegiatanNoST").value,
     Tanggal: state.selectedDate,
     NamaKegiatan: namaKegiatan,
     Lokasi: document.getElementById("kegiatanLokasi").value
   };
+  // NoST cuma dikirim saat EDIT (kalau admin sengaja mengoreksi manual) -
+  // saat TAMBAH baru, sengaja dibiarkan kosong (status "Menunggu Nomor").
+  if (row) basePayload.NoST = document.getElementById("kegiatanNoST").value;
 
   if (row) {
     // EDIT: 1 orang
@@ -335,8 +341,10 @@ async function sendAction(action, data) {
     // supaya _row yang dipakai untuk edit/hapus berikutnya selalu akurat.
     await refreshDataSetelahSimpan();
     showToast("Data berhasil disimpan.");
+    return json.result;
   } catch (err) {
     showToast("Gagal menyimpan: " + err.message, true);
+    return null;
   } finally {
     sedangMenyimpan = false;
     setSimpanButtonsDisabled(false);

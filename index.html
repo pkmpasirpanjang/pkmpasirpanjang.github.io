@@ -147,6 +147,7 @@
       <div class="modal-col">
         <h3>🧭 Kegiatan Luar Gedung</h3>
         <div id="modalKegiatanList" class="modal-list"></div>
+        <button id="beriNomorTanggalBtn" class="btn-secondary small admin-only hidden">🔢 Beri Nomor Surat Tugas (tanggal ini)</button>
         <button id="addKegiatanBtn" class="btn-add admin-only hidden">+ Tambah Kegiatan Luar</button>
       </div>
     </div>
@@ -232,8 +233,11 @@
     </div>
     <form id="formKegiatan">
       <input type="hidden" id="kegiatanRow">
-      <label>No. Surat Tugas</label>
-      <input type="text" id="kegiatanNoST" placeholder="misal: 094/ST/PKM-PP/VII/2026">
+      <div id="kegiatanNoSTWrap">
+        <label>No. Surat Tugas</label>
+        <input type="text" id="kegiatanNoST" placeholder="misal: 094">
+        <p class="form-hint">Nomor diisi otomatis lewat tombol "Beri Nomor Surat Tugas" di pop up tanggal (mode admin) - kosongkan saja kalau belum ada.</p>
+      </div>
       <label>Nama Kegiatan</label>
       <select id="kegiatanNamaSelect"></select>
       <input type="text" id="kegiatanNamaManual" placeholder="Ketik nama kegiatan..." class="hidden">

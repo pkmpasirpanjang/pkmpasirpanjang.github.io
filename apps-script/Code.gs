@@ -19,10 +19,14 @@
  * perubahan kode benar-benar aktif di URL yang sama.
  *
  * KHUSUS SEKALI SAJA saat pertama kali memasang kode versi ini (yang
- * sudah punya pembacaan data lebih cepat): pilih fungsi
- * "urutkanUlangSemuaDataLama" di dropdown sebelah tombol Run, lalu klik
- * Run - ini mengurutkan data yang sudah ada sekarang berdasarkan tanggal
- * (wajib, sekali saja). Setelah itu baru Deploy seperti biasa.
+ * sudah punya pembacaan data lebih cepat & penomoran surat tugas otomatis):
+ * jalankan (lewat dropdown sebelah tombol Run) fungsi-fungsi berikut, SATU
+ * PER SATU, urutan bebas - sebelum Deploy:
+ *   1. "siapkanKolomWaktuInput" - menyiapkan kolom pencatat waktu input
+ *      di sheet KegiatanLuar (dibutuhkan fitur penomoran surat tugas).
+ *   2. "urutkanUlangSemuaDataLama" - mengurutkan data yang sudah ada
+ *      berdasarkan tanggal (dibutuhkan supaya pembacaan data lebih cepat).
+ * Setelah kedua fungsi itu selesai dijalankan, baru Deploy seperti biasa.
  * ============================================================
  */
 
@@ -111,6 +115,9 @@ function doPost(e) {
           break;
         case 'syncApelHari':
           result = syncApelHari(body.data);
+          break;
+        case 'beriNomorSuratTugas':
+          result = beriNomorSuratTugas(body.data.Tanggal);
           break;
         default:
           return jsonResponse({ success: false, error: 'Aksi tidak dikenal: ' + action });
@@ -421,6 +428,7 @@ function addKegiatan(d) {
   sheet.getRange(row, 1).setValue(d.NoST || '');
   writeTanggalAsText(sheet, row, 2, d.Tanggal);
   sheet.getRange(row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, d.Nama]]);
+  sheet.getRange(row, 6).setValue(new Date().toISOString());
   sortSheetByDate(sheet, 2);
   return true;
 }
@@ -432,9 +440,15 @@ function addKegiatanMulti(d) {
   var namaList = d.NamaList || [];
   if (namaList.length === 0) return true;
 
+  // Waktu input dicatat (kolom F) supaya urutan "siapa lebih dulu diinput"
+  // tetap bisa dilacak akurat walau baris nanti berpindah posisi akibat
+  // pengurutan otomatis berdasarkan tanggal - dipakai saat penomoran surat
+  // tugas otomatis (lihat beriNomorSuratTugas()) untuk kegiatan di tanggal
+  // yang sama. Sama untuk semua baris di kelompok ini (1 surat = 1 waktu).
+  var waktuInput = new Date().toISOString();
   var startRow = sheet.getLastRow() + 1;
   var rows = namaList.map(function (nama) {
-    return [d.NoST || '', String(d.Tanggal), d.NamaKegiatan, d.Lokasi, nama];
+    return [d.NoST || '', String(d.Tanggal), d.NamaKegiatan, d.Lokasi, nama, waktuInput];
   });
 
   // Pastikan kolom Tanggal (kolom ke-2) dibaca sebagai teks, bukan Date,
@@ -442,7 +456,7 @@ function addKegiatanMulti(d) {
   sheet.getRange(startRow, 2, rows.length, 1).setNumberFormat('@');
   // Satu panggilan setValues untuk semua baris sekaligus (jauh lebih cepat
   // daripada menulis baris demi baris satu-satu).
-  sheet.getRange(startRow, 1, rows.length, 5).setValues(rows);
+  sheet.getRange(startRow, 1, rows.length, 6).setValues(rows);
   sortSheetByDate(sheet, 2);
   // Sama seperti addAbsensiRange - frontend mengambil ulang data segar
   // setelah ini (lihat sendAction() di forms.js), jadi tidak perlu lagi
@@ -569,6 +583,21 @@ function syncApelHari(d) {
 // cepat (filterByTanggalOptimized) di kode ini mengasumsikan data sudah urut.
 // Setelah ini dijalankan sekali, sheet akan otomatis tetap terurut dengan
 // sendirinya setiap kali ada data baru disimpan lewat dashboard.
+// PENTING - jalankan fungsi ini SEKALI SAJA lewat tombol "Run" di Apps Script
+// SEBELUM men-deploy versi kode ini (boleh sekaligus dengan urutkanUlangSemuaDataLama).
+// Ini menyiapkan kolom F "WaktuInput" di sheet KegiatanLuar - dipakai untuk
+// mencatat kapan setiap kegiatan diinput, supaya penomoran surat tugas
+// otomatis (beriNomorSuratTugas) bisa tahu urutan mana yang lebih dulu
+// diinput kalau ada beberapa kegiatan di tanggal yang sama.
+function siapkanKolomWaktuInput() {
+  var sheet = getSheet(SHEET_KEGIATAN);
+  var headerCell = sheet.getRange(1, 6);
+  if (!headerCell.getValue()) {
+    headerCell.setValue('WaktuInput');
+  }
+  Logger.log('Kolom F (WaktuInput) sudah disiapkan di sheet KegiatanLuar.');
+}
+
 function urutkanUlangSemuaDataLama() {
   sortSheetByDate(getSheet(SHEET_ABSENSI), 1);
   sortSheetByDate(getSheet(SHEET_KEGIATAN), 2);
@@ -579,4 +608,147 @@ function urutkanUlangSemuaDataLama() {
 function deleteRow(sheetName, rowNumber) {
   getSheet(sheetName).deleteRow(rowNumber);
   return true;
+}
+
+// ============================================================
+// PENOMORAN SURAT TUGAS OTOMATIS (BATCH)
+// ============================================================
+// Aturan (sudah disepakati dengan pengguna dashboard):
+// - Nomor polos berurut ("094", "095", ...) - BUKAN per baris pegawai,
+//   tapi per KELOMPOK kegiatan (Tanggal+NamaKegiatan+Lokasi yang sama =
+//   1 surat tugas yang sama, walau diikuti beberapa pegawai/baris).
+// - Diurutkan berdasarkan TANGGAL KEGIATAN (bukan tanggal input). Kalau
+//   tanggalnya sama, yang paling dulu diinput ke sistem (WaktuInput) duluan
+//   dapat nomor.
+// - Nomor di-reset ke 1 lagi tiap tahun baru, berdasarkan tahun Tanggal
+//   Kegiatan (bukan tahun saat tombol "Beri Nomor" ditekan).
+// - Kegiatan susulan yang tanggalnya lebih awal dari kegiatan yang sudah
+//   diberi nomor sebelumnya (tanggal itu sudah "closed") tidak menggeser
+//   nomor yang sudah terpakai - dapat nomor SISIPAN yang menempel di nomor
+//   TERAKHIR yang sudah terpakai tahun itu (nomor terakhir 442 -> sisipan
+//   "442.a", sisipan berikutnya di tahun yang sama "442.b", dst).
+// - Dipanggil per-tanggal dari tombol "Beri Nomor" di pop-up detail tanggal
+//   (bukan tombol global) - tanggalTarget WAJIB diisi, cuma kegiatan di
+//   tanggal itu yang diproses. Kegiatan menunggu nomor di tanggal LAIN
+//   (walau sudah lama diinput) TIDAK ikut kena nomor sampai tombol di
+//   tanggal itu sendiri yang ditekan.
+function beriNomorSuratTugas(tanggalTarget) {
+  var sheet = getSheet(SHEET_KEGIATAN);
+  var semua = sheetToObjects(sheet);
+
+  // Kelompokkan baris-baris jadi 1 "surat tugas" per Tanggal+NamaKegiatan+Lokasi.
+  var groupsMap = {};
+  semua.forEach(function (r) {
+    var key = r.Tanggal + '|' + (r.NamaKegiatan || '') + '|' + (r.Lokasi || '');
+    if (!groupsMap[key]) {
+      groupsMap[key] = {
+        Tanggal: r.Tanggal, NamaKegiatan: r.NamaKegiatan, Lokasi: r.Lokasi,
+        NoST: r.NoST || '', waktuInputMin: r.WaktuInput || '', rows: []
+      };
+    }
+    groupsMap[key].rows.push(r);
+    // Ambil waktu input paling awal di antara baris-baris kelompok ini (untuk tie-break).
+    if (r.WaktuInput && (!groupsMap[key].waktuInputMin || r.WaktuInput < groupsMap[key].waktuInputMin)) {
+      groupsMap[key].waktuInputMin = r.WaktuInput;
+    }
+  });
+  var allGroups = Object.keys(groupsMap).map(function (k) { return groupsMap[k]; });
+
+  // Hanya kegiatan di TANGGAL TARGET yang diproses - kegiatan menunggu nomor
+  // di tanggal lain dibiarkan (baru diproses saat tombol di tanggal itu ditekan).
+  var pendingGroups = allGroups.filter(function (g) { return !g.NoST && g.Tanggal === tanggalTarget; });
+  if (pendingGroups.length === 0) {
+    return { jumlahDiberiNomor: 0, detail: [] };
+  }
+  var numberedGroups = allGroups.filter(function (g) { return !!g.NoST; });
+
+  // Kelompokkan pending per TAHUN (dari Tanggal Kegiatan) - nomor reset tiap tahun.
+  var pendingByYear = {};
+  pendingGroups.forEach(function (g) {
+    var tahun = g.Tanggal.substring(0, 4);
+    if (!pendingByYear[tahun]) pendingByYear[tahun] = [];
+    pendingByYear[tahun].push(g);
+  });
+
+  var hasilDetail = [];
+  var perubahan = []; // {row, value} - dikumpulkan dulu, ditulis sekaligus di akhir
+
+  var urutkan = function (a, b) {
+    if (a.Tanggal !== b.Tanggal) return a.Tanggal < b.Tanggal ? -1 : 1;
+    var wa = a.waktuInputMin || '', wb = b.waktuInputMin || '';
+    if (wa !== wb) return wa < wb ? -1 : 1;
+    return 0;
+  };
+
+  Object.keys(pendingByYear).sort().forEach(function (tahun) {
+    // Cari nomor TERAKHIR yang sudah terpakai tahun ini (hanya nomor polos,
+    // sisipan tidak dihitung) dan tanggal kegiatan paling akhir yang sudah
+    // bernomor tahun ini (jadi batas "closed" - lebih awal dari ini = susulan).
+    var lastNumber = 0;
+    var watermarkDate = '';
+    numberedGroups.forEach(function (g) {
+      if (g.Tanggal.substring(0, 4) !== tahun) return;
+      if (/^\d+$/.test(g.NoST)) {
+        var n = parseInt(g.NoST, 10);
+        if (n > lastNumber) lastNumber = n;
+        if (g.Tanggal > watermarkDate) watermarkDate = g.Tanggal;
+      }
+    });
+
+    var groupsTahunIni = pendingByYear[tahun];
+    var normal = groupsTahunIni.filter(function (g) { return !watermarkDate || g.Tanggal > watermarkDate; });
+    var susulan = groupsTahunIni.filter(function (g) { return watermarkDate && g.Tanggal <= watermarkDate; });
+    normal.sort(urutkan);
+    susulan.sort(urutkan);
+
+    // 1) Kegiatan MAJU (tanggal lebih baru dari yang sudah closed) - nomor urut biasa.
+    normal.forEach(function (g) {
+      lastNumber += 1;
+      var nomor = padNomor(lastNumber);
+      g.rows.forEach(function (r) { perubahan.push({ row: r._row, value: nomor }); });
+      hasilDetail.push({ Tanggal: g.Tanggal, NamaKegiatan: g.NamaKegiatan, Lokasi: g.Lokasi, NoST: nomor });
+    });
+
+    // 2) Kegiatan SUSULAN - nomor sisipan, menempel di nomor TERAKHIR yang
+    //    sudah terpakai tahun ini (termasuk hasil poin 1 di atas kalau ada).
+    if (susulan.length > 0) {
+      var hurufTerpakai = {}; // basis (misal "445") -> huruf terakhir yang sudah dipakai
+      numberedGroups.forEach(function (g) {
+        if (g.Tanggal.substring(0, 4) !== tahun) return;
+        var m = /^(\d+)\.([a-zA-Z])$/.exec(g.NoST);
+        if (m) {
+          var basis = m[1];
+          var huruf = m[2].toLowerCase();
+          if (!hurufTerpakai[basis] || huruf > hurufTerpakai[basis]) hurufTerpakai[basis] = huruf;
+        }
+      });
+      var basisTerakhir = padNomor(lastNumber);
+      susulan.forEach(function (g) {
+        var hurufSebelumnya = hurufTerpakai[basisTerakhir];
+        var hurufBaru = hurufSebelumnya ? String.fromCharCode(hurufSebelumnya.charCodeAt(0) + 1) : 'a';
+        if (hurufBaru > 'z') throw new Error('Nomor sisipan untuk ' + basisTerakhir + ' sudah penuh (lebih dari 26) - perlu penanganan manual.');
+        hurufTerpakai[basisTerakhir] = hurufBaru;
+        var nomor = basisTerakhir + '.' + hurufBaru;
+        g.rows.forEach(function (r) { perubahan.push({ row: r._row, value: nomor }); });
+        hasilDetail.push({ Tanggal: g.Tanggal, NamaKegiatan: g.NamaKegiatan, Lokasi: g.Lokasi, NoST: nomor });
+      });
+    }
+  });
+
+  // Tulis semua nomor baru sekaligus ke sheet (tidak mengganggu urutan tanggal,
+  // karena hanya kolom NoST/kolom 1 yang ditulis - tidak perlu sortSheetByDate lagi).
+  perubahan.forEach(function (item) {
+    sheet.getRange(item.row, 1).setValue(item.value);
+  });
+
+  hasilDetail.sort(function (a, b) { return a.Tanggal < b.Tanggal ? -1 : (a.Tanggal > b.Tanggal ? 1 : 0); });
+  return { jumlahDiberiNomor: hasilDetail.length, detail: hasilDetail };
+}
+
+// Angka -> teks 3 digit ("94" -> "094"). Kalau lebih dari 999, tetap aman
+// (tidak terpotong), cuma jadi 4 digit ("1000") - bukan perilaku salah.
+function padNomor(n) {
+  var s = String(n);
+  while (s.length < 3) s = '0' + s;
+  return s;
 }

@@ -148,7 +148,7 @@ function openDateModal(key) {
     `).join("");
     el.innerHTML = `
       <div class="item-title" style="color:${warna}">${k.NamaKegiatan || "(Tanpa nama kegiatan)"}</div>
-      <div class="item-sub">📍 ${k.Lokasi}${k.NoST ? `<span class="st-tag">No.ST: ${k.NoST}</span>` : ""}</div>
+      <div class="item-sub">📍 ${k.Lokasi}${k.NoST ? `<span class="st-tag">No.ST: ${k.NoST}</span>` : `<span class="st-tag st-pending">⏳ Menunggu Nomor</span>`}</div>
       <div class="person-chip-row">${chipsHtml}</div>
     `;
     if (state.isAdmin) {
@@ -163,6 +163,32 @@ function openDateModal(key) {
     }
     kegEl.appendChild(el);
   });
+
+  // Tombol "Beri Nomor Surat Tugas" khusus untuk tanggal ini saja - cuma
+  // muncul kalau admin aktif DAN ada kegiatan di tanggal ini yang masih
+  // "Menunggu Nomor". Kegiatan menunggu nomor di tanggal LAIN tidak ikut
+  // diproses walau sudah lama diinput - harus diklik dari tanggal masing-masing.
+  const beriNomorBtn = document.getElementById("beriNomorTanggalBtn");
+  const adaPending = kegiatanList.some(k => !k.NoST);
+  beriNomorBtn.classList.toggle("hidden", !(state.isAdmin && adaPending));
+  beriNomorBtn.onclick = async () => {
+    const konfirmasi = confirm(
+      `Beri nomor otomatis untuk semua kegiatan luar gedung yang menunggu nomor DI TANGGAL INI SAJA?\n\n` +
+      `Nomor akan langsung tersimpan ke spreadsheet. Kalau ada kegiatan menunggu nomor di tanggal lain, ` +
+      `harus diklik terpisah dari tanggal masing-masing.`
+    );
+    if (!konfirmasi) return;
+    const result = await sendAction("beriNomorSuratTugas", { Tanggal: key });
+    if (!result) return; // gagal - pesan error sudah ditampilkan oleh sendAction
+    if (result.jumlahDiberiNomor === 0) {
+      alert("Tidak ada kegiatan yang menunggu nomor di tanggal ini.");
+      return;
+    }
+    const daftar = result.detail
+      .map(d => `• No. ${d.NoST} — ${d.NamaKegiatan} (${d.Lokasi})`)
+      .join("\n");
+    alert(`${result.jumlahDiberiNomor} kegiatan di tanggal ini berhasil diberi nomor:\n\n${daftar}`);
+  };
 
   document.getElementById("addAbsenBtn").classList.toggle("hidden", !state.isAdmin);
   document.getElementById("addKegiatanBtn").classList.toggle("hidden", !state.isAdmin);
