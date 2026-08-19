@@ -46,7 +46,7 @@ function doGet(e) {
     if (action === 'data') {
       var dari = e.parameter && e.parameter.dari;
       var sampai = e.parameter && e.parameter.sampai;
-      return jsonResponse(getAllData(dari, sampai));
+      return jsonResponse(getAllDataCached(dari, sampai));
     }
     return jsonResponse({ error: 'Aksi tidak dikenal: ' + action });
   } catch (err) {
@@ -122,6 +122,10 @@ function doPost(e) {
     } finally {
       lock.releaseLock();
     }
+    // Perubahan berhasil disimpan - batalkan cache lama supaya siapa pun yang
+    // buka dashboard setelah ini (termasuk yang baru saja menyimpan) langsung
+    // dapat data terbaru, bukan versi cache yang sudah kedaluwarsa.
+    bumpCacheVersion();
     return jsonResponse({ success: true, result: result });
   } catch (err) {
     return jsonResponse({ success: false, error: err.message });
@@ -198,6 +202,49 @@ function getAllData(dari, sampai) {
     libur: getGabunganLibur(), // sheet kecil, baca semua tetap aman
     apel: filterByTanggalOptimized(getOrCreateApelSheet(), 1, 4, dari, sampai)
   };
+}
+
+// ============================================================
+// CACHE BERSAMA (server) - mengurangi baca spreadsheet berulang kalau
+// beberapa orang buka bulan yang sama dalam waktu berdekatan.
+// ============================================================
+// CacheService di Apps Script dibagikan ke SEMUA orang yang mengakses
+// dashboard ini (beda dengan cache di browser/localStorage yang cuma
+// berlaku untuk 1 perangkat) - jadi kalau staf A baru saja buka Agustus,
+// staf B yang buka Agustus tak lama setelahnya langsung dapat versi cache
+// (tanpa baca ulang ke spreadsheet), selama belum ada yang mengubah data.
+function getAllDataCached(dari, sampai) {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'data_v' + getCacheVersion() + '_' + dari + '_' + sampai;
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var result = getAllData(dari, sampai);
+  try {
+    // CacheService punya batas ukuran per key (~100KB) - kalau datanya
+    // kebetulan lebih besar dari itu (jarang terjadi untuk 1 bulan data),
+    // biarkan saja gagal cache-nya, tidak masalah - dashboard tetap jalan
+    // normal, cuma tidak dapat manfaat cache untuk permintaan itu.
+    cache.put(cacheKey, JSON.stringify(result), 300); // 5 menit
+  } catch (e) {
+    // sengaja dibiarkan - lihat penjelasan di atas
+  }
+  return result;
+}
+
+// Nomor versi cache - dipakai sebagai bagian dari cacheKey di atas. Setiap
+// kali ADA PERUBAHAN DATA (lewat doPost, lihat bumpCacheVersion di bawah),
+// nomor ini naik 1, otomatis membuat SEMUA cacheKey lama (versi sebelumnya)
+// tidak pernah cocok lagi - jadi permintaan berikutnya pasti baca data segar
+// dari spreadsheet, bukan versi cache yang sudah basi.
+function getCacheVersion() {
+  var v = PropertiesService.getScriptProperties().getProperty('CACHE_VERSION');
+  return v || '0';
+}
+function bumpCacheVersion() {
+  var props = PropertiesService.getScriptProperties();
+  var v = parseInt(getCacheVersion(), 10) + 1;
+  props.setProperty('CACHE_VERSION', String(v));
 }
 
 // ============================================================
