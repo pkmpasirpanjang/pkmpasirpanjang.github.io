@@ -1006,6 +1006,14 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   font-weight: 600;
 }
 .footer-link:hover { text-decoration: underline; }
+.footer-logo {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin-right: 5px;
+  border-radius: 4px;
+  object-fit: contain;
+}
 
 /* ============================================================
    RESPONSIVE
@@ -1021,6 +1029,10 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   .cal-badges { flex-direction: column; gap: 2px; }
   .cal-badge-count { font-size: 9px; padding: 1px 4px; gap: 2px; }
   .dot { width: 5px; height: 5px; }
+
+  /* Logo footer sedikit lebih kecil di layar HP supaya proporsional
+     dengan teks footer yang juga kecil (12px). */
+  .footer-logo { width: 15px; height: 15px; margin-right: 4px; }
 
   /* 4 tombol tab tampilan dipaksa jadi grid 2 kolom tetap - selalu rapi
      2x2, tidak lagi wrap acak (2+1+1) tergantung panjang tulisannya. */
