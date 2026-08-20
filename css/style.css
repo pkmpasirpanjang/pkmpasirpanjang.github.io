@@ -568,6 +568,38 @@ h2 {
 .btn-libur:hover { background: rgba(232,172,62,0.3); }
 .btn-danger.small { padding: 7px 12px; font-size: 12px; margin-right: 0; }
 
+/* Banner "spreadsheet tahun ini belum dibuat" - tampil persisten di atas
+   halaman (semua orang) dan sebagai pesan khusus di dalam pop up tanggal
+   (lihat #modalTahunBelumAda) - dua tempat, gaya sama biar konsisten. */
+.tahun-banner, .tahun-modal-msg {
+  background: rgba(228,98,111,0.16);
+  border: 1px solid #E4626F;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.tahun-modal-msg { flex-direction: column; align-items: flex-start; }
+.tahun-modal-msg p { margin: 0 0 8px 0; }
+.tahun-banner button, .tahun-modal-msg button {
+  background: #E4626F;
+  border: none;
+  color: #fff;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tahun-banner button:hover, .tahun-modal-msg button:hover { background: #d14a54; }
+
 .modal-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;

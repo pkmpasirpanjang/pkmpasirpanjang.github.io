@@ -211,7 +211,7 @@ async function deleteAbsen() {
   const row = document.getElementById("absenRow").value;
   if (!row) return;
   if (!confirm("Hapus data absen ini?")) return;
-  await sendAction("deleteAbsensi", { _row: Number(row) });
+  await sendAction("deleteAbsensi", { _row: Number(row), Tahun: state.selectedDate.substring(0, 4) });
   hideModal("formAbsenModal");
 }
 
@@ -302,7 +302,7 @@ async function deleteKegiatan() {
   const row = document.getElementById("kegiatanRow").value;
   if (!row) return;
   if (!confirm("Hapus data kegiatan ini?")) return;
-  await sendAction("deleteKegiatan", { _row: Number(row) });
+  await sendAction("deleteKegiatan", { _row: Number(row), Tahun: state.selectedDate.substring(0, 4) });
   hideModal("formKegiatanModal");
 }
 
@@ -330,6 +330,14 @@ async function sendAction(action, data) {
     });
     const json = await res.json();
     if (!json.success) throw new Error(json.error || "Gagal menyimpan.");
+
+    if (json.result && json.result.perluKonfirmasi) {
+      // Belum ada perubahan data sungguhan - server cuma minta konfirmasi
+      // dulu (misal: ada tanggal lebih awal yang belum diberi nomor). Jangan
+      // tampilkan "Data berhasil disimpan" atau muat ulang data - belum ada
+      // apa pun yang berubah.
+      return json.result;
+    }
 
     // Sheet Absensi & KegiatanLuar di server otomatis diurutkan ulang
     // berdasarkan tanggal setiap kali ada data baru disimpan (supaya
@@ -433,6 +441,8 @@ function activateAdmin() {
   document.getElementById("adminToggleBtn").textContent = "🔓 Admin Aktif";
   document.getElementById("adminToggleBtn").classList.add("admin-active");
   document.getElementById("rangeAbsenBtn").classList.remove("hidden");
+  cekTahunIniUntukBanner();
+  updateTahunBanner(); // kalau banner sudah tampil (staf biasa lihat sebelum admin login), tombolnya langsung muncul
 }
 
 function setupRangeAbsenForm() {
@@ -476,5 +486,36 @@ function setupRangeAbsenForm() {
     });
     hideModal("formAbsenRangeModal");
   });
+}
+
+// ============================================================
+// BUAT SPREADSHEET TAHUN BARU
+// ============================================================
+// Dipanggil dari tombol "Buat Sekarang" di banner (lihat updateTahunBanner
+// di core.js) - menyalin struktur & daftar Pegawai dari tahun sebelumnya,
+// mengosongkan data Absensi/KegiatanLuar/Apel/Libur, lalu mendaftarkannya
+// ke sistem. Setelah berhasil, langsung muat ulang data supaya kalender
+// terisi kalau kebetulan sedang menampilkan tahun itu.
+async function buatSpreadsheetTahunBaruHandler(tahun) {
+  const konfirmasi = confirm(
+    `Buat spreadsheet baru untuk tahun ${tahun}?\n\n` +
+    `Struktur sheet & daftar Pegawai akan disalin otomatis dari tahun sebelumnya ` +
+    `(data Absensi/Kegiatan/Apel/Libur akan kosong - memang untuk tahun baru). ` +
+    `Spreadsheet baru akan muncul di folder Google Drive yang sama.`
+  );
+  if (!konfirmasi) return;
+
+  const result = await sendAction("buatSpreadsheetTahunBaru", { Tahun: tahun });
+  if (!result) return; // gagal - pesan error sudah ditampilkan sendAction
+
+  state.tahunBelumAda = null;
+  updateTahunBanner();
+  showToast(`Spreadsheet tahun ${tahun} berhasil dibuat!`);
+
+  // Muat ulang data supaya kalender langsung terisi kalau memang sedang
+  // menampilkan tahun yang baru dibuat ini.
+  state.loadedMonths.clear();
+  await ensureMonthsLoaded([currentMonthKey()]);
+  renderSectionSafely("Kalender", renderCalendar);
 }
 

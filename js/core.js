@@ -20,7 +20,8 @@ const state = {
   kegiatanSelectedNames: new Set(), // pegawai yang dicentang di form "Tambah Kegiatan Luar"
   apelPagiSelected: new Set(),      // pegawai yang dicentang "tidak ikut apel pagi" di tanggal yg sedang dibuka
   apelSiangSelected: new Set(),     // pegawai yang dicentang "tidak ikut apel siang" di tanggal yg sedang dibuka
-  loadedMonths: new Set()           // "YYYY-MM" bulan yang data Absensi/KegiatanLuar/Apel-nya sudah diambil sesi ini
+  loadedMonths: new Set(),          // "YYYY-MM" bulan yang data Absensi/KegiatanLuar/Apel-nya sudah diambil sesi ini
+  tahunBelumAda: null                // diisi tahun (string) kalau permintaan terakhir gagal karena spreadsheet tahun itu belum dibuat
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -191,7 +192,17 @@ async function ensureMonthsLoaded(monthKeys, opts) {
   try {
     const res = await fetch(`${CONFIG.API_URL}?action=data&dari=${dari}&sampai=${sampai}&_ts=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
+    if (json.error === "TAHUN_BELUM_ADA") {
+      // Bukan error biasa - spreadsheet untuk tahun itu memang belum dibuat.
+      // Simpan info ini supaya kalender/pop up tanggal bisa menampilkan
+      // tombol "Buat Spreadsheet Tahun Ini" alih-alih pesan error generik.
+      state.tahunBelumAda = json.tahun;
+      updateTahunBanner();
+      return false;
+    }
     if (json.error) throw new Error(json.error);
+    state.tahunBelumAda = null;
+    updateTahunBanner();
     mergeFetchedData(json, dari, sampai);
     // Tandai SEMUA bulan dalam rentang fetch ini sebagai sudah dimuat (bukan cuma
     // yang diminta), supaya bulan lain di rentang yang sama tidak ditarik ulang.
@@ -230,6 +241,44 @@ function showLoadingIndicator(text) {
 function hideLoadingIndicator() {
   const el = document.getElementById("dataLoadingIndicator");
   if (el) el.classList.add("hidden");
+}
+
+// ============================================================
+// BANNER "SPREADSHEET TAHUN INI BELUM DIBUAT"
+// ============================================================
+// Tampil kalau state.tahunBelumAda terisi (lihat ensureMonthsLoaded di atas).
+// Teksnya tetap muncul untuk semua orang (supaya staf biasa tahu kenapa
+// datanya kosong), tombol "Buat Sekarang" cuma muncul untuk admin.
+function updateTahunBanner() {
+  const banner = document.getElementById("tahunBanner");
+  const text = document.getElementById("tahunBannerText");
+  const btn = document.getElementById("tahunBannerBtn");
+  if (!banner || !text || !btn) return;
+
+  if (!state.tahunBelumAda) {
+    banner.classList.add("hidden");
+    return;
+  }
+  const tahun = state.tahunBelumAda;
+  text.textContent = `⚠️ Spreadsheet untuk tahun ${tahun} belum dibuat - data tahun ini belum bisa ditampilkan.`;
+  banner.classList.remove("hidden");
+  btn.classList.toggle("hidden", !state.isAdmin);
+  btn.onclick = () => buatSpreadsheetTahunBaruHandler(tahun);
+}
+
+// Dipanggil sekali saat mode admin diaktifkan - cek TAHUN KALENDER SUNGGUHAN
+// SEKARANG (bukan tahun yang sedang dibuka di kalender), supaya admin dapat
+// peringatan lebih awal walau kebetulan sedang lihat-lihat bulan/tahun lain.
+function cekTahunIniUntukBanner() {
+  fetch(`${CONFIG.API_URL}?action=cekTahunIni&_ts=${Date.now()}`, { cache: "no-store" })
+    .then(res => res.json())
+    .then(json => {
+      if (json && json.ada === false) {
+        state.tahunBelumAda = json.tahun;
+        updateTahunBanner();
+      }
+    })
+    .catch(() => {}); // gagal cek diam-diam saja - banner cuma tidak muncul, tidak kritis
 }
 
 // Dipanggil setiap kali pindah tab - memastikan data yang dibutuhkan tab itu

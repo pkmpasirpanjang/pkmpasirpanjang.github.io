@@ -19,11 +19,12 @@
  * perubahan kode benar-benar aktif di URL yang sama.
  *
  * KHUSUS SEKALI SAJA saat pertama kali memasang kode versi ini (yang sudah
- * punya fitur penomoran surat tugas otomatis): jalankan (lewat dropdown
- * sebelah tombol Run) fungsi "siapkanKolomWaktuInput" - ini menyiapkan
- * kolom pencatat waktu input di sheet KegiatanLuar (dibutuhkan fitur
- * penomoran surat tugas). Setelah itu selesai dijalankan, baru Deploy
- * seperti biasa.
+ * punya sistem multi-tahun - 1 spreadsheet terpisah per tahun): jalankan
+ * (lewat dropdown sebelah tombol Run) fungsi "daftarkanSpreadsheetTahunIni"
+ * - ini WAJIB, tanpa ini dashboard tidak akan tahu harus baca data dari
+ * spreadsheet mana sama sekali. Setelah itu selesai dijalankan, baru
+ * Deploy seperti biasa. (Fungsi "siapkanKolomWaktuInput" dari versi
+ * sebelumnya tidak perlu dijalankan lagi kalau sudah pernah dijalankan.)
  * ============================================================
  */
 
@@ -40,6 +41,16 @@ const SHEET_APEL = 'Apel';
 // akibat perbedaan zona waktu antara Sheets dan project Apps Script.
 const TIMEZONE = 'Asia/Makassar';
 
+// Key PropertiesService untuk menyimpan peta "tahun -> ID spreadsheet tahun
+// itu" (lihat bagian MULTI-TAHUN di bawah).
+const PROP_YEAR_MAP = 'YEAR_SPREADSHEETS';
+
+// "Tahun sekarang" versi teks, dihitung dari TIMEZONE puskesmas (bukan
+// timezone default server) - supaya konsisten dengan sisa kode yang lain.
+function tahunSekarang() {
+  return Utilities.formatDate(new Date(), TIMEZONE, 'yyyy');
+}
+
 function doGet(e) {
   try {
     var action = (e.parameter && e.parameter.action) || 'data';
@@ -48,8 +59,18 @@ function doGet(e) {
       var sampai = e.parameter && e.parameter.sampai;
       return jsonResponse(getAllDataCached(dari, sampai));
     }
+    if (action === 'cekTahunIni') {
+      // Dipakai frontend untuk banner peringatan mode admin - cek apakah
+      // spreadsheet TAHUN INI (tahun kalender sungguhan sekarang) sudah
+      // terdaftar, independen dari bulan/tahun apa yang sedang dibuka di kalender.
+      var tahunIni = tahunSekarang();
+      return jsonResponse({ tahun: tahunIni, ada: !!getSpreadsheetIdForYear(tahunIni) });
+    }
     return jsonResponse({ error: 'Aksi tidak dikenal: ' + action });
   } catch (err) {
+    if (err.message === 'TAHUN_BELUM_ADA') {
+      return jsonResponse({ error: 'TAHUN_BELUM_ADA', tahun: err.tahun });
+    }
     return jsonResponse({ error: err.message });
   }
 }
@@ -90,7 +111,7 @@ function doPost(e) {
           result = updateAbsensi(body.data);
           break;
         case 'deleteAbsensi':
-          result = deleteRow(SHEET_ABSENSI, body.data._row);
+          result = deleteRowForYear(body.data.Tahun, SHEET_ABSENSI, body.data._row);
           break;
         case 'addKegiatan':
           result = addKegiatan(body.data);
@@ -102,19 +123,22 @@ function doPost(e) {
           result = updateKegiatan(body.data);
           break;
         case 'deleteKegiatan':
-          result = deleteRow(SHEET_KEGIATAN, body.data._row);
+          result = deleteRowForYear(body.data.Tahun, SHEET_KEGIATAN, body.data._row);
           break;
         case 'addLibur':
           result = addLibur(body.data);
           break;
         case 'deleteLibur':
-          result = deleteRow(SHEET_LIBUR, body.data._row);
+          result = deleteRowForYear(body.data.Tahun, SHEET_LIBUR, body.data._row);
           break;
         case 'syncApelHari':
           result = syncApelHari(body.data);
           break;
         case 'beriNomorSuratTugas':
-          result = beriNomorSuratTugas(body.data.Tanggal);
+          result = beriNomorSuratTugas(body.data.Tanggal, !!body.data.Paksa);
+          break;
+        case 'buatSpreadsheetTahunBaru':
+          result = buatSpreadsheetTahunBaru(body.data.Tahun);
           break;
         default:
           return jsonResponse({ success: false, error: 'Aksi tidak dikenal: ' + action });
@@ -128,6 +152,9 @@ function doPost(e) {
     bumpCacheVersion();
     return jsonResponse({ success: true, result: result });
   } catch (err) {
+    if (err.message === 'TAHUN_BELUM_ADA') {
+      return jsonResponse({ success: false, error: 'TAHUN_BELUM_ADA', tahun: err.tahun });
+    }
     return jsonResponse({ success: false, error: err.message });
   }
 }
@@ -142,6 +169,119 @@ function getSheet(name) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
   if (!sheet) throw new Error('Sheet "' + name + '" tidak ditemukan.');
   return sheet;
+}
+
+// ============================================================
+// MULTI-TAHUN - 1 spreadsheet terpisah per tahun
+// ============================================================
+// Supaya dashboard tetap cepat walau data terus menumpuk bertahun-tahun,
+// tiap tahun punya spreadsheet-nya SENDIRI (bukan semua tahun ditumpuk di
+// 1 spreadsheet yang sama). Script ini TIDAK lagi "menempel" ke 1
+// spreadsheet tertentu (getActiveSpreadsheet()) untuk operasi data -
+// sebagai gantinya, dia punya daftar "tahun -> ID spreadsheet tahun itu"
+// yang disimpan di PropertiesService (bertahan selamanya, tidak hilang
+// walau spreadsheet-nya dipindah folder atau di-rename di Drive - Google
+// Sheets mengenali file lewat ID, bukan nama/lokasi).
+//
+// PENTING: getSheet(name) di atas (versi lama) SENGAJA dibiarkan apa
+// adanya - dipakai oleh tools manual satu-kali (siapkanKolomWaktuInput,
+// urutkanUlangSemuaDataLama, dst) yang memang harus dijalankan langsung
+// dari spreadsheet yang sedang dibuka di Apps Script editor. Untuk operasi
+// data sehari-hari (dari dashboard), semua fungsi di bawah ini pakai
+// getSheetForYear() - BUKAN getSheet().
+
+function getYearSpreadsheetMap() {
+  var raw = PropertiesService.getScriptProperties().getProperty(PROP_YEAR_MAP);
+  return raw ? JSON.parse(raw) : {};
+}
+function setYearSpreadsheetMap(map) {
+  PropertiesService.getScriptProperties().setProperty(PROP_YEAR_MAP, JSON.stringify(map));
+}
+function getSpreadsheetIdForYear(tahun) {
+  var map = getYearSpreadsheetMap();
+  return map[String(tahun)] || null;
+}
+
+// Melempar error khusus (bukan Error biasa) kalau tahun yang diminta belum
+// terdaftar - doGet/doPost menangkap ini secara khusus supaya dashboard
+// bisa menampilkan tombol "Buat Spreadsheet Tahun Ini", bukan pesan error biasa.
+function getSpreadsheetForYear(tahun) {
+  var id = getSpreadsheetIdForYear(tahun);
+  if (!id) {
+    var err = new Error('TAHUN_BELUM_ADA');
+    err.tahun = String(tahun);
+    throw err;
+  }
+  return SpreadsheetApp.openById(id);
+}
+
+function getSheetForYear(tahun, sheetName) {
+  var ss = getSpreadsheetForYear(tahun);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('Sheet "' + sheetName + '" tidak ditemukan di spreadsheet tahun ' + tahun + '.');
+  return sheet;
+}
+
+// WAJIB DIJALANKAN SEKALI SAJA (lewat tombol Run) SEBELUM men-deploy versi
+// kode multi-tahun ini - mendaftarkan spreadsheet yang SEDANG AKTIF/dibuka
+// ini sebagai data untuk TAHUN INI ke dalam sistem. Tanpa langkah ini,
+// dashboard tidak akan tahu harus baca dari spreadsheet mana sama sekali.
+function daftarkanSpreadsheetTahunIni() {
+  var tahun = tahunSekarang();
+  var map = getYearSpreadsheetMap();
+  map[tahun] = SpreadsheetApp.getActiveSpreadsheet().getId();
+  setYearSpreadsheetMap(map);
+  Logger.log('Spreadsheet ini sudah didaftarkan sebagai data tahun ' + tahun + '.');
+}
+
+// Membuat spreadsheet tahun baru dengan MENYALIN spreadsheet tahun sebelumnya
+// (supaya struktur sheet & daftar Pegawai ikut tersalin, tidak perlu bikin
+// manual dari nol) - lalu mengosongkan data Absensi/KegiatanLuar/Apel/Libur
+// (Pegawai TETAP dipertahankan). Spreadsheet baru dijamin ditempatkan di
+// folder Drive yang SAMA dengan spreadsheet sumbernya. Dipanggil dari
+// tombol "Buat Sekarang" di dashboard (mode admin).
+function buatSpreadsheetTahunBaru(tahunBaru) {
+  tahunBaru = String(tahunBaru);
+  var map = getYearSpreadsheetMap();
+  if (map[tahunBaru]) {
+    throw new Error('Spreadsheet untuk tahun ' + tahunBaru + ' sudah ada.');
+  }
+  var tahunSumber = String(Number(tahunBaru) - 1);
+  var idSumber = map[tahunSumber];
+  if (!idSumber) {
+    throw new Error(
+      'Spreadsheet tahun ' + tahunSumber + ' (dipakai sebagai contoh struktur) tidak ditemukan di sistem - ' +
+      'tidak bisa membuat tahun ' + tahunBaru + ' secara otomatis. Perlu setup manual.'
+    );
+  }
+
+  var fileSumber = DriveApp.getFileById(idSumber);
+  var parents = fileSumber.getParents();
+  var folder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+
+  var namaBaru = 'Dashboard Kalender - ' + tahunBaru;
+  var fileBaru = fileSumber.makeCopy(namaBaru, folder);
+  var ssBaru = SpreadsheetApp.openById(fileBaru.getId());
+
+  // Kosongkan ISI (bukan header/struktur) sheet yang datanya memang khusus
+  // untuk 1 tahun. Pegawai SENGAJA tidak dikosongkan - staf biasanya sama
+  // dari tahun ke tahun, tinggal disunting manual di spreadsheet kalau ada
+  // yang keluar/masuk.
+  [SHEET_ABSENSI, SHEET_KEGIATAN, SHEET_APEL, SHEET_LIBUR].forEach(function (namaSheet) {
+    var sheet = ssBaru.getSheetByName(namaSheet);
+    if (!sheet) return; // sheet Apel/Libur kadang belum pernah dibuat kalau belum pernah dipakai - wajar
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow > 1 && lastCol > 0) {
+      sheet.getRange(2, 1, lastRow - 1, lastCol).clearContent();
+    }
+  });
+
+  map[tahunBaru] = ssBaru.getId();
+  setYearSpreadsheetMap(map);
+  bumpCacheVersion(); // supaya status "tahun belum ada" yang sempat ke-cache langsung basi
+
+  return { tahun: tahunBaru, spreadsheetId: ssBaru.getId(), nama: namaBaru, url: ssBaru.getUrl() };
 }
 
 // Mengubah isi sheet jadi array of object berdasarkan header di baris 1.
@@ -171,8 +311,8 @@ function sheetToObjects(sheet) {
 
 // Sheet "Libur" dibuat otomatis kalau belum ada, supaya Anda tidak perlu
 // bikin manual di Google Sheets.
-function getOrCreateLiburSheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+function getOrCreateLiburSheetForYear(tahun) {
+  var ss = getSpreadsheetForYear(tahun);
   var sheet = ss.getSheetByName(SHEET_LIBUR);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_LIBUR);
@@ -184,8 +324,8 @@ function getOrCreateLiburSheet() {
 // Sheet "Apel" dibuat otomatis kalau belum ada - tidak perlu Anda buat manual
 // di Spreadsheet. Hanya mencatat pegawai yang TIDAK ikut (sama seperti pola
 // sheet Absensi), supaya tidak perlu mencatat semua pegawai yang hadir tiap hari.
-function getOrCreateApelSheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+function getOrCreateApelSheetForYear(tahun) {
+  var ss = getSpreadsheetForYear(tahun);
   var sheet = ss.getSheetByName(SHEET_APEL);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_APEL);
@@ -195,12 +335,13 @@ function getOrCreateApelSheet() {
 }
 
 function getAllData(dari, sampai) {
+  var tahun = (dari || sampai).substring(0, 4);
   return {
-    pegawai: sheetToObjects(getSheet(SHEET_PEGAWAI)), // sheet kecil, baca semua tetap aman
-    absensi: filterByTanggalOptimized(getSheet(SHEET_ABSENSI), 1, 4, dari, sampai),
-    kegiatanLuar: filterByTanggalOptimized(getSheet(SHEET_KEGIATAN), 2, 5, dari, sampai),
-    libur: getGabunganLibur(), // sheet kecil, baca semua tetap aman
-    apel: filterByTanggalOptimized(getOrCreateApelSheet(), 1, 4, dari, sampai)
+    pegawai: sheetToObjects(getSheetForYear(tahun, SHEET_PEGAWAI)), // sheet kecil, baca semua tetap aman
+    absensi: filterByTanggalOptimized(getSheetForYear(tahun, SHEET_ABSENSI), 1, 4, dari, sampai),
+    kegiatanLuar: filterByTanggalOptimized(getSheetForYear(tahun, SHEET_KEGIATAN), 2, 5, dari, sampai),
+    libur: getGabunganLibur(tahun),
+    apel: filterByTanggalOptimized(getOrCreateApelSheetForYear(tahun), 1, 4, dari, sampai)
   };
 }
 
@@ -321,9 +462,9 @@ function sortSheetByDate(sheet, dateCol) {
   sheet.getRange(2, 1, lastRow - 1, lastCol).sort({ column: dateCol, ascending: true });
 }
 
-// Gabungan: libur nasional (otomatis dari Google Calendar) + libur manual (dari sheet Libur)
-function getGabunganLibur() {
-  var manual = sheetToObjects(getOrCreateLiburSheet()).map(function (m) {
+// Gabungan: libur nasional (otomatis dari Google Calendar) + libur manual (dari sheet Libur tahun ini)
+function getGabunganLibur(tahun) {
+  var manual = sheetToObjects(getOrCreateLiburSheetForYear(tahun)).map(function (m) {
     m.Sumber = 'Manual';
     return m;
   });
@@ -383,7 +524,8 @@ function bersihkanCacheLibur() {
 }
 
 function addLibur(d) {
-  var sheet = getOrCreateLiburSheet();
+  var tahun = d.Tanggal.substring(0, 4);
+  var sheet = getOrCreateLiburSheetForYear(tahun);
   var row = sheet.getLastRow() + 1;
   writeTanggalAsText(sheet, row, 1, d.Tanggal);
   sheet.getRange(row, 2).setValue(d.Keterangan || '');
@@ -391,7 +533,8 @@ function addLibur(d) {
 }
 
 function addAbsensi(d) {
-  var sheet = getSheet(SHEET_ABSENSI);
+  var tahun = d.Tanggal.substring(0, 4);
+  var sheet = getSheetForYear(tahun, SHEET_ABSENSI);
   var row = sheet.getLastRow() + 1;
   writeTanggalAsText(sheet, row, 1, d.Tanggal);
   sheet.getRange(row, 2, 1, 3).setValues([[d.Nama, d.Status, d.Keterangan || '']]);
@@ -400,8 +543,9 @@ function addAbsensi(d) {
 
 // Mencatat 1 pegawai tidak hadir untuk banyak tanggal sekaligus (cuti/sakit panjang).
 // d = { Nama, Status, Keterangan, TanggalMulai, TanggalSelesai } (format yyyy-MM-dd)
+// Kalau rentangnya kebetulan melewati pergantian tahun (misal 28 Des - 5 Jan),
+// baris-barisnya otomatis dipecah dan ditulis ke spreadsheet tahun masing-masing.
 function addAbsensiRange(d) {
-  var sheet = getSheet(SHEET_ABSENSI);
   var mulai = parseTanggalText(d.TanggalMulai);
   var selesai = parseTanggalText(d.TanggalSelesai);
   var jumlahHari = Math.round((selesai - mulai) / (24 * 60 * 60 * 1000)) + 1;
@@ -409,16 +553,30 @@ function addAbsensiRange(d) {
     throw new Error('Rentang tanggal tidak valid.');
   }
 
-  var rows = [];
+  var rowsByYear = {};
   for (var i = 0; i < jumlahHari; i++) {
     var tgl = new Date(mulai.getTime() + i * 24 * 60 * 60 * 1000);
     var tglText = Utilities.formatDate(tgl, TIMEZONE, 'yyyy-MM-dd');
-    rows.push([tglText, d.Nama, d.Status, d.Keterangan || '']);
+    var tahunBaris = tglText.substring(0, 4);
+    if (!rowsByYear[tahunBaris]) rowsByYear[tahunBaris] = [];
+    rowsByYear[tahunBaris].push([tglText, d.Nama, d.Status, d.Keterangan || '']);
   }
 
-  var startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, rows.length, 4).setValues(rows);
-  return { jumlah: rows.length, Nama: d.Nama, Status: d.Status };
+  // Pastikan SEMUA tahun yang dibutuhkan sudah terdaftar SEBELUM menulis
+  // apa pun - supaya tidak ada data "separuh jalan" kalau ternyata salah
+  // satu tahun (biasanya tahun baru yang belum dibuat) belum ada.
+  var tahunList = Object.keys(rowsByYear);
+  tahunList.forEach(function (tahun) { getSpreadsheetForYear(tahun); });
+
+  var totalRows = 0;
+  tahunList.forEach(function (tahun) {
+    var sheet = getSheetForYear(tahun, SHEET_ABSENSI);
+    var rows = rowsByYear[tahun];
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rows.length, 4).setValues(rows);
+    totalRows += rows.length;
+  });
+  return { jumlah: totalRows, Nama: d.Nama, Status: d.Status };
 }
 
 // Mengubah teks "yyyy-MM-dd" jadi objek Date (tengah malam, sesuai TIMEZONE puskesmas)
@@ -427,15 +585,21 @@ function parseTanggalText(tglText) {
   return new Date(Number(bagian[0]), Number(bagian[1]) - 1, Number(bagian[2]));
 }
 
+// Catatan: form edit di dashboard TIDAK punya kolom ubah tanggal (tanggal
+// selalu mengikuti popup tanggal yang sedang dibuka), jadi baris yang diedit
+// selalu tetap berada di tahun/spreadsheet yang sama - tidak perlu menangani
+// kasus "pindah tahun" di sini.
 function updateAbsensi(d) {
-  var sheet = getSheet(SHEET_ABSENSI);
+  var tahun = d.Tanggal.substring(0, 4);
+  var sheet = getSheetForYear(tahun, SHEET_ABSENSI);
   writeTanggalAsText(sheet, d._row, 1, d.Tanggal);
   sheet.getRange(d._row, 2, 1, 3).setValues([[d.Nama, d.Status, d.Keterangan || '']]);
   return { _row: d._row, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
 }
 
 function addKegiatan(d) {
-  var sheet = getSheet(SHEET_KEGIATAN);
+  var tahun = d.Tanggal.substring(0, 4);
+  var sheet = getSheetForYear(tahun, SHEET_KEGIATAN);
   var row = sheet.getLastRow() + 1;
   sheet.getRange(row, 1).setValue(d.NoST || '');
   writeTanggalAsText(sheet, row, 2, d.Tanggal);
@@ -447,7 +611,8 @@ function addKegiatan(d) {
 // Menambahkan 1 kegiatan yang sama untuk beberapa pegawai sekaligus.
 // Setiap pegawai jadi 1 baris terpisah di sheet KegiatanLuar.
 function addKegiatanMulti(d) {
-  var sheet = getSheet(SHEET_KEGIATAN);
+  var tahun = String(d.Tanggal).substring(0, 4);
+  var sheet = getSheetForYear(tahun, SHEET_KEGIATAN);
   var namaList = d.NamaList || [];
   if (namaList.length === 0) return true;
 
@@ -471,8 +636,11 @@ function addKegiatanMulti(d) {
   return { jumlah: rows.length, NamaKegiatan: d.NamaKegiatan, Lokasi: d.Lokasi };
 }
 
+// Catatan: sama seperti updateAbsensi - form edit kegiatan tidak punya
+// kolom ubah tanggal, jadi baris yang diedit selalu tetap di tahun yang sama.
 function updateKegiatan(d) {
-  var sheet = getSheet(SHEET_KEGIATAN);
+  var tahun = d.Tanggal.substring(0, 4);
+  var sheet = getSheetForYear(tahun, SHEET_KEGIATAN);
   sheet.getRange(d._row, 1).setValue(d.NoST || '');
   writeTanggalAsText(sheet, d._row, 2, d.Tanggal);
   sheet.getRange(d._row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, d.Nama]]);
@@ -533,7 +701,8 @@ function perbaikiFormatTanggalLama() {
 // (bukan menambah satu-satu), jadi tidak perlu melacak baris mana yang
 // berubah - cukup ganti semua data hari itu dengan versi terbaru.
 function syncApelHari(d) {
-  var sheet = getOrCreateApelSheet();
+  var tahun = d.Tanggal.substring(0, 4);
+  var sheet = getOrCreateApelSheetForYear(tahun);
   var existing = sheetToObjects(sheet);
 
   // Baris untuk tanggal LAIN tetap dipertahankan apa adanya.
@@ -586,17 +755,19 @@ function siapkanKolomWaktuInput() {
 
 // OPSIONAL - TIDAK WAJIB dijalankan. Dashboard tidak lagi butuh sheet
 // terurut untuk tetap cepat (lihat filterByTanggalOptimized di atas).
-// Jalankan ini kapan saja kalau kamu sendiri ingin merapikan tampilan
-// baris di spreadsheet secara manual (murni kosmetik).
+// Jalankan ini kapan saja (dengan spreadsheet tahun yang ingin dirapikan
+// sedang AKTIF/terbuka di Apps Script editor) kalau kamu sendiri ingin
+// merapikan tampilan baris secara manual (murni kosmetik).
 function urutkanUlangSemuaDataLama() {
   sortSheetByDate(getSheet(SHEET_ABSENSI), 1);
   sortSheetByDate(getSheet(SHEET_KEGIATAN), 2);
-  sortSheetByDate(getOrCreateApelSheet(), 1);
-  Logger.log('Selesai - sheet Absensi, KegiatanLuar, dan Apel sudah diurutkan berdasarkan tanggal.');
+  var apelSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_APEL);
+  if (apelSheet) sortSheetByDate(apelSheet, 1);
+  Logger.log('Selesai - sheet Absensi, KegiatanLuar, dan Apel (kalau ada) sudah diurutkan berdasarkan tanggal.');
 }
 
-function deleteRow(sheetName, rowNumber) {
-  getSheet(sheetName).deleteRow(rowNumber);
+function deleteRowForYear(tahun, sheetName, rowNumber) {
+  getSheetForYear(tahun, sheetName).deleteRow(rowNumber);
   return true;
 }
 
@@ -622,8 +793,9 @@ function deleteRow(sheetName, rowNumber) {
 //   tanggal itu yang diproses. Kegiatan menunggu nomor di tanggal LAIN
 //   (walau sudah lama diinput) TIDAK ikut kena nomor sampai tombol di
 //   tanggal itu sendiri yang ditekan.
-function beriNomorSuratTugas(tanggalTarget) {
-  var sheet = getSheet(SHEET_KEGIATAN);
+function beriNomorSuratTugas(tanggalTarget, paksa) {
+  var tahun = tanggalTarget.substring(0, 4);
+  var sheet = getSheetForYear(tahun, SHEET_KEGIATAN);
   var semua = sheetToObjects(sheet);
 
   // Kelompokkan baris-baris jadi 1 "surat tugas" per Tanggal+NamaKegiatan+Lokasi.
@@ -643,6 +815,23 @@ function beriNomorSuratTugas(tanggalTarget) {
     }
   });
   var allGroups = Object.keys(groupsMap).map(function (k) { return groupsMap[k]; });
+
+  // PENGAMAN: kalau ada kegiatan TANGGAL LAIN yang LEBIH AWAL dari tanggalTarget
+  // (tahun yang sama) dan masih menunggu nomor, beri tahu dulu SEBELUM diproses -
+  // supaya tidak kejebak dapat sisipan tanpa sadar gara-gara tanggal yang lebih
+  // awal itu belum diberi nomor duluan. Admin tetap bisa pilih lanjut (paksa=true).
+  if (!paksa) {
+    var tanggalLebihAwalSet = {};
+    allGroups.forEach(function (g) {
+      if (!g.NoST && g.Tanggal.substring(0, 4) === tahun && g.Tanggal < tanggalTarget) {
+        tanggalLebihAwalSet[g.Tanggal] = true;
+      }
+    });
+    var tanggalLebihAwal = Object.keys(tanggalLebihAwalSet).sort();
+    if (tanggalLebihAwal.length > 0) {
+      return { perluKonfirmasi: true, tanggalLebihAwal: tanggalLebihAwal };
+    }
+  }
 
   // Hanya kegiatan di TANGGAL TARGET yang diproses - kegiatan menunggu nomor
   // di tanggal lain dibiarkan (baru diproses saat tombol di tanggal itu ditekan).
@@ -686,8 +875,14 @@ function beriNomorSuratTugas(tanggalTarget) {
     });
 
     var groupsTahunIni = pendingByYear[tahun];
-    var normal = groupsTahunIni.filter(function (g) { return !watermarkDate || g.Tanggal > watermarkDate; });
-    var susulan = groupsTahunIni.filter(function (g) { return watermarkDate && g.Tanggal <= watermarkDate; });
+    // PENTING: tanggal yang PERSIS SAMA dengan watermark (sudah pernah
+    // dinomori sebelumnya di tanggal itu juga) tetap dianggap MAJU/lanjut
+    // normal, BUKAN susulan - susulan cuma untuk tanggal yang BENAR-BENAR
+    // lebih awal (strict <), supaya klik "Beri Nomor" berkali-kali di
+    // tanggal yang sama (misal ada kegiatan baru ditambah belakangan di
+    // tanggal itu) tetap lanjut normal, bukan malah dikira menyusul.
+    var normal = groupsTahunIni.filter(function (g) { return !watermarkDate || g.Tanggal >= watermarkDate; });
+    var susulan = groupsTahunIni.filter(function (g) { return watermarkDate && g.Tanggal < watermarkDate; });
     normal.sort(urutkan);
     susulan.sort(urutkan);
 

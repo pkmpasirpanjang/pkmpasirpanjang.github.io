@@ -79,6 +79,32 @@ function openDateModal(key) {
   const [y, m, d] = key.split("-").map(Number);
   document.getElementById("modalDateTitle").textContent = `${d} ${BULAN_ID[m - 1]} ${y}`;
 
+  const tahunModalMsg = document.getElementById("modalTahunBelumAda");
+  const modalColumns = document.querySelector(".modal-columns");
+  const tahunTanggalIni = key.substring(0, 4);
+
+  if (state.tahunBelumAda === tahunTanggalIni) {
+    // Spreadsheet untuk tahun ini belum dibuat - tidak ada data yang bisa
+    // ditampilkan sama sekali. Tampilkan pesan khusus + tombol (admin saja),
+    // sembunyikan semua bagian lain yang butuh data.
+    tahunModalMsg.classList.remove("hidden");
+    document.getElementById("modalTahunBelumAdaText").textContent =
+      `Spreadsheet untuk tahun ${tahunTanggalIni} belum dibuat, jadi data tanggal ini belum bisa ditampilkan.`;
+    const pesanBtn = document.getElementById("modalTahunBelumAdaBtn");
+    pesanBtn.classList.toggle("hidden", !state.isAdmin);
+    pesanBtn.onclick = () => buatSpreadsheetTahunBaruHandler(tahunTanggalIni);
+
+    modalColumns.classList.add("hidden");
+    document.getElementById("apelAdminSection").classList.add("hidden");
+    document.getElementById("liburBar").classList.add("hidden");
+    document.querySelector(".libur-actions").classList.add("hidden");
+    document.getElementById("beriNomorTanggalBtn").classList.add("hidden");
+    showModal("dateModal");
+    return;
+  }
+  tahunModalMsg.classList.add("hidden");
+  modalColumns.classList.remove("hidden");
+
   const liburRecord = getLiburRecord(key);
   const liburBar = document.getElementById("liburBar");
   const liburLabel = document.getElementById("liburLabel");
@@ -90,7 +116,7 @@ function openDateModal(key) {
     liburLabel.textContent = liburRecord.Keterangan ? `Hari Libur — ${liburRecord.Keterangan}` : "Hari Libur";
     markBtn.classList.add("hidden");
     unmarkBtn.classList.remove("hidden");
-    unmarkBtn.onclick = () => sendAction("deleteLibur", { _row: liburRecord._row });
+    unmarkBtn.onclick = () => sendAction("deleteLibur", { _row: liburRecord._row, Tahun: key.substring(0, 4) });
   } else {
     liburBar.classList.add("hidden");
     markBtn.classList.remove("hidden");
@@ -178,8 +204,28 @@ function openDateModal(key) {
       `harus diklik terpisah dari tanggal masing-masing.`
     );
     if (!konfirmasi) return;
-    const result = await sendAction("beriNomorSuratTugas", { Tanggal: key });
+
+    let result = await sendAction("beriNomorSuratTugas", { Tanggal: key });
     if (!result) return; // gagal - pesan error sudah ditampilkan oleh sendAction
+
+    if (result.perluKonfirmasi) {
+      // Ada tanggal LEBIH AWAL yang masih menunggu nomor - beri tahu dulu,
+      // karena kalau tanggal ini tetap dinomori duluan, tanggal yang lebih
+      // awal itu nanti bakal dapat nomor SISIPAN (bukan urut normal).
+      const daftarTanggal = result.tanggalLebihAwal
+        .map(t => formatTanggalIndo(t))
+        .join(", ");
+      const lanjutkan = confirm(
+        `⚠️ Ada kegiatan di tanggal LEBIH AWAL yang belum diberi nomor: ${daftarTanggal}.\n\n` +
+        `Kalau tanggal ini (${formatTanggalIndo(key)}) tetap dinomori sekarang, tanggal yang lebih awal itu ` +
+        `nanti akan dapat nomor SISIPAN (bukan urut normal) kalau kamu beri nomor belakangan.\n\n` +
+        `Disarankan: batalkan dulu, beri nomor tanggal yang lebih awal itu dulu. Tetap lanjutkan tanggal ini sekarang?`
+      );
+      if (!lanjutkan) return;
+      result = await sendAction("beriNomorSuratTugas", { Tanggal: key, Paksa: true });
+      if (!result) return;
+    }
+
     if (result.jumlahDiberiNomor === 0) {
       alert("Tidak ada kegiatan yang menunggu nomor di tanggal ini.");
       return;
