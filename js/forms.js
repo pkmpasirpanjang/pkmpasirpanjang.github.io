@@ -312,6 +312,12 @@ async function deleteKegiatan() {
 // ============================================================
 let sedangMenyimpan = false;
 
+// Batas waktu tunggu fetch simpan. Sengaja SEDIKIT LEBIH LAMA daripada batas
+// tunggu LockService di server (25 detik, lihat Code.gs) - supaya kalau
+// server memang cuma sedang antre kunci (bukan macet), timeout client tidak
+// memotong proses itu lebih dulu sebelum server sempat menjawab.
+const SIMPAN_TIMEOUT_MS = 30000;
+
 async function sendAction(action, data) {
   if (sedangMenyimpan) {
     showToast("Masih memproses permintaan sebelumnya, mohon tunggu sebentar...", true);
@@ -322,12 +328,41 @@ async function sendAction(action, data) {
 
   sedangMenyimpan = true;
   setSimpanButtonsDisabled(true);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SIMPAN_TIMEOUT_MS);
+
   try {
-    const res = await fetch(CONFIG.API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, pin, data })
-    });
+    let res;
+    try {
+      res = await fetch(CONFIG.API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action, pin, data }),
+        signal: controller.signal
+      });
+    } catch (fetchErr) {
+      if (fetchErr.name === "AbortError") {
+        // Fetch dibatalkan karena kelamaan (koneksi lambat / server lelet) -
+        // BUKAN berarti gagal. Permintaannya sudah terlanjur terkirim ke
+        // server dan bisa saja tetap berhasil tersimpan di sana, cuma
+        // jawabannya yang tidak sempat kita terima tepat waktu. Karena itu:
+        // JANGAN bilang "gagal" (supaya user tidak reflek klik simpan lagi
+        // dan berisiko data dobel) - tarik ulang data terbaru dari server
+        // dan biarkan user LIHAT SENDIRI apakah datanya sudah masuk atau
+        // belum, baru putuskan perlu ulang atau tidak.
+        showToast("Koneksi lambat, proses lebih lama dari biasanya. Memeriksa apakah data sudah tersimpan...", true);
+        try {
+          await refreshDataSetelahSimpan();
+          showToast("Data terbaru sudah dimuat ulang - cek dulu apakah perubahan Anda sudah masuk sebelum simpan lagi.", true);
+        } catch (refreshErr) {
+          showToast("Koneksi lambat dan gagal memeriksa ulang. Muat ulang halaman lalu cek datanya dulu sebelum mencoba simpan lagi - jangan langsung klik simpan berulang.", true);
+        }
+        return null;
+      }
+      throw fetchErr;
+    }
+
     const json = await res.json();
     if (!json.success) throw new Error(json.error || "Gagal menyimpan.");
 
@@ -354,6 +389,7 @@ async function sendAction(action, data) {
     showToast("Gagal menyimpan: " + err.message, true);
     return null;
   } finally {
+    clearTimeout(timeoutId);
     sedangMenyimpan = false;
     setSimpanButtonsDisabled(false);
   }

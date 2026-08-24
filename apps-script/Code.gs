@@ -113,9 +113,6 @@ function doPost(e) {
         case 'deleteAbsensi':
           result = deleteRowForYear(body.data.Tahun, SHEET_ABSENSI, body.data._row);
           break;
-        case 'addKegiatan':
-          result = addKegiatan(body.data);
-          break;
         case 'addKegiatanMulti':
           result = addKegiatanMulti(body.data);
           break;
@@ -480,7 +477,7 @@ function getGabunganLibur(tahun) {
 }
 
 // Libur nasional Indonesia diambil dari kalender publik Google.
-// Hasilnya disimpan sementara (cache 6 jam) supaya tidak lambat setiap dibuka.
+// Hasilnya disimpan sementara (cache 24 jam) supaya tidak lambat setiap dibuka.
 function getLiburNasional(year) {
   var cache = CacheService.getScriptCache();
   var cacheKey = 'libur_nasional_' + year;
@@ -503,7 +500,7 @@ function getLiburNasional(year) {
     // Hanya simpan ke cache kalau proses di atas berhasil (tidak error).
     // Kalau gagal (misal izin belum aktif), JANGAN di-cache supaya percobaan
     // berikutnya tetap mencoba lagi, bukan terus-menerus mengembalikan kosong.
-    cache.put(cacheKey, JSON.stringify(hasil), 21600); // 6 jam
+    cache.put(cacheKey, JSON.stringify(hasil), 86400); // 24 jam - data libur nasional nyaris tidak pernah berubah dalam sehari
   } catch (err) {
     hasil = [];
   }
@@ -595,17 +592,6 @@ function updateAbsensi(d) {
   writeTanggalAsText(sheet, d._row, 1, d.Tanggal);
   sheet.getRange(d._row, 2, 1, 3).setValues([[d.Nama, d.Status, d.Keterangan || '']]);
   return { _row: d._row, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
-}
-
-function addKegiatan(d) {
-  var tahun = d.Tanggal.substring(0, 4);
-  var sheet = getSheetForYear(tahun, SHEET_KEGIATAN);
-  var row = sheet.getLastRow() + 1;
-  sheet.getRange(row, 1).setValue(d.NoST || '');
-  writeTanggalAsText(sheet, row, 2, d.Tanggal);
-  sheet.getRange(row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, d.Nama]]);
-  sheet.getRange(row, 6).setValue(new Date().toISOString());
-  return true;
 }
 
 // Menambahkan 1 kegiatan yang sama untuk beberapa pegawai sekaligus.
