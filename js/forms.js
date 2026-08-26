@@ -411,6 +411,7 @@ async function refreshDataSetelahSimpan() {
   renderSectionSafely("Statistik Kehadiran", renderStatAbsen);
   renderSectionSafely("Statistik Apel", renderStatApel);
   renderSectionSafely("Statistik Kegiatan Luar", renderStatKegiatan);
+  renderSectionSafely("Ticker kehadiran", rebuildKehadiranTicker);
 }
 
 // Menonaktifkan sementara semua tombol "Simpan" selagi ada proses berjalan,

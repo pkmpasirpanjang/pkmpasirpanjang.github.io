@@ -21,7 +21,9 @@ const state = {
   apelPagiSelected: new Set(),      // pegawai yang dicentang "tidak ikut apel pagi" di tanggal yg sedang dibuka
   apelSiangSelected: new Set(),     // pegawai yang dicentang "tidak ikut apel siang" di tanggal yg sedang dibuka
   loadedMonths: new Set(),          // "YYYY-MM" bulan yang data Absensi/KegiatanLuar/Apel-nya sudah diambil sesi ini
-  tahunBelumAda: null                // diisi tahun (string) kalau permintaan terakhir gagal karena spreadsheet tahun itu belum dibuat
+  tahunBelumAda: null,               // diisi tahun (string) kalau permintaan terakhir gagal karena spreadsheet tahun itu belum dibuat
+  tickerItems: [],                   // daftar teks ticker "status kehadiran hari ini" (sudah diacak)
+  tickerIndex: 0                     // index item ticker yang sedang ditampilkan
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -102,6 +104,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupModals();
   setupAdmin();
   setupExportMenu();
+  setupFloatingMenus();
+  startKehadiranTicker();
 
   // Kalau ada data dari kunjungan sebelumnya tersimpan di perangkat ini,
   // tampilkan dulu itu SEKARANG JUGA (walau mungkin sedikit basi), supaya
@@ -110,6 +114,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderCalendar();
   if (hasCache) {
     renderSectionSafely("Daftar pegawai (dropdown)", populateEmployeeSelects);
+    renderSectionSafely("Ticker kehadiran", rebuildKehadiranTicker);
   }
   // Pilihan bulan di dropdown Statistik cuma daftar 12 bulan terakhir (statis,
   // tidak butuh data) - aman disiapkan dari awal supaya dropdown langsung terisi.
@@ -126,6 +131,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   await ensureMonthsLoaded([currentMonthKey()], { silent: hasCache });
   renderSectionSafely("Kalender", renderCalendar);
   renderSectionSafely("Daftar pegawai (dropdown)", populateEmployeeSelects);
+  renderSectionSafely("Ticker kehadiran", rebuildKehadiranTicker);
+
+  // Data "hari ini" bisa berubah dari perangkat admin LAIN (bukan lewat
+  // simpan di perangkat ini) - jadi selain nge-refresh saat kita sendiri
+  // simpan, ticker juga disegarkan diam-diam tiap beberapa menit supaya
+  // tetap terasa "real-time" tanpa perlu reload halaman manual. Ringan
+  // untuk server karena tetap lewat cache 5 menit di Code.gs.
+  setInterval(() => {
+    ensureMonthsLoaded([currentMonthKey()], { silent: true })
+      .then(() => renderSectionSafely("Ticker kehadiran", rebuildKehadiranTicker));
+  }, 180000); // 3 menit
 });
 
 function currentMonthKey() {
@@ -333,28 +349,147 @@ function setupTabs() {
 }
 
 // ============================================================
-// SOCIAL MENU
+// SOCIAL MENU (href saja - buka/tutup ditangani setupFloatingMenus)
 // ============================================================
 function applySocialLinks() {
   document.getElementById("socialWa").href = CONFIG.SOSMED.whatsapp;
   document.getElementById("socialFb").href = CONFIG.SOSMED.facebook;
   document.getElementById("socialIg").href = CONFIG.SOSMED.instagram;
   document.getElementById("socialTiktok").href = CONFIG.SOSMED.tiktok;
+}
 
-  document.getElementById("socialToggleBtn").addEventListener("click", () => {
-    const links = document.getElementById("socialLinks");
-    const exportMenu = document.querySelector(".export-menu");
-    links.classList.toggle("hidden");
-
-    // Kalau menu sosial media sedang terbuka, dorong menu unduh Excel ke atas
-    // supaya tidak ketutupan/ketumpuk sama daftar ikon sosial media yang muncul.
-    if (!links.classList.contains("hidden")) {
-      const pushUp = links.offsetHeight + 10; // 10px = jarak antar menu
-      if (exportMenu) exportMenu.style.transform = `translateY(-${pushUp}px)`;
-    } else {
-      if (exportMenu) exportMenu.style.transform = "";
-    }
+// ============================================================
+// FLOATING MENUS (Excel & Sosial Media) - expand lurus ke atas
+// ============================================================
+// Kedua grup tombol melayang (Export Excel & Sosial Media) berbagi
+// perilaku yang sama: saat tombol utama diklik, pilihan-pilihannya
+// terbuka lurus ke atas (bukan melengkung - sudah dicoba melengkung,
+// hasilnya kurang rapi), tombol utamanya sedikit memudar, dan hanya SATU
+// grup yang boleh terbuka dalam satu waktu - buka grup lain otomatis
+// menutup yang sedang terbuka. Klik di luar area manapun juga menutup.
+function isFloatingMenuOpen(menuEl) {
+  return menuEl.classList.contains("open");
+}
+function openFloatingMenu(menuEl) {
+  document.querySelectorAll(".social-menu.open, .export-menu.open").forEach(el => {
+    if (el !== menuEl) el.classList.remove("open");
   });
+  menuEl.classList.add("open");
+}
+function closeFloatingMenu(menuEl) {
+  if (menuEl) menuEl.classList.remove("open");
+}
+
+function setupFloatingMenus() {
+  const socialMenu = document.querySelector(".social-menu");
+  const exportMenu = document.querySelector(".export-menu");
+  const socialLinks = document.getElementById("socialLinks");
+
+  // Kalau menu sosial media sedang terbuka, dorong menu unduh Excel ke atas
+  // supaya tidak ketutupan/ketumpuk sama daftar ikon sosial media yang
+  // terbuka lurus ke atas persis di bawahnya.
+  function syncExportPushUp() {
+    if (isFloatingMenuOpen(socialMenu)) {
+      const pushUp = socialLinks.offsetHeight + 10; // 10px = jarak antar menu
+      exportMenu.style.transform = `translateY(-${pushUp}px)`;
+    } else {
+      exportMenu.style.transform = "";
+    }
+  }
+
+  document.getElementById("socialToggleBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isFloatingMenuOpen(socialMenu)) closeFloatingMenu(socialMenu);
+    else openFloatingMenu(socialMenu);
+    syncExportPushUp();
+  });
+  document.getElementById("exportToggleBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isFloatingMenuOpen(exportMenu)) closeFloatingMenu(exportMenu);
+    else openFloatingMenu(exportMenu); // otomatis menutup social (mutual exclusion) via openFloatingMenu
+    syncExportPushUp();
+  });
+
+  // Klik di luar kedua grup tombol -> tutup grup yang sedang terbuka (kalau ada).
+  document.addEventListener("click", (e) => {
+    if (isFloatingMenuOpen(socialMenu) && !socialMenu.contains(e.target)) closeFloatingMenu(socialMenu);
+    if (isFloatingMenuOpen(exportMenu) && !exportMenu.contains(e.target)) closeFloatingMenu(exportMenu);
+    syncExportPushUp();
+  });
+}
+
+// ============================================================
+// TICKER STATUS KEHADIRAN HARI INI
+// ============================================================
+// Menampilkan satu per satu (berganti tiap ~1.8 detik) nama pegawai yang
+// hari ini sedang sakit/izin atau sedang kegiatan luar gedung, diacak
+// urutannya. Kalau semua pegawai hadir normal (tidak ada yang sakit/izin/
+// dinas luar sama sekali hari ini), tampilkan pesan statis.
+const TICKER_INTERVAL_MS = 2000;
+let tickerRotateTimer = null;
+
+function todayDateKey() {
+  const now = new Date();
+  return dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function rebuildKehadiranTicker() {
+  const key = todayDateKey();
+  const items = [];
+
+  state.data.absensi
+    .filter(a => a.Tanggal === key && (a.Status === "Sakit" || a.Status === "Izin"))
+    .forEach(a => {
+      items.push(a.Status === "Sakit"
+        ? `${a.Nama} sedang sakit hari ini`
+        : `${a.Nama} sedang izin hari ini`);
+    });
+
+  state.data.kegiatanLuar
+    .filter(k => k.Tanggal === key)
+    .forEach(k => {
+      items.push(`${k.Nama} sedang melaksanakan ${k.NamaKegiatan || "kegiatan"} di ${k.Lokasi || "-"}`);
+    });
+
+  state.tickerItems = items;
+  if (state.tickerIndex === undefined || state.tickerIndex >= items.length) {
+    state.tickerIndex = 0;
+  }
+  renderKehadiranTickerText();
+}
+
+function renderKehadiranTickerText() {
+  const el = document.getElementById("tickerText");
+  if (!el) return;
+  const items = state.tickerItems || [];
+  el.textContent = items.length ? items[state.tickerIndex % items.length] : "Semua pegawai hadir hari ini 👍";
+}
+
+// Dipilih ACAK PENUH setiap giliran (bukan geser berurutan lewat 1 daftar
+// yang sudah diacak sekali) - supaya urutan kategori (tidak hadir vs
+// kegiatan luar) tidak pernah terasa "berpola" walau ditonton lama, karena
+// daftar yang sama cuma di-rebuild tiap beberapa menit. Sengaja hindari
+// mengulang index yang SAMA PERSIS dua kali berturut-turut (supaya tidak
+// terasa macet menampilkan nama yang sama), tapi kategori yang sama boleh
+// tampil berturut-turut (itu wajar untuk acak sungguhan).
+function showNextTickerItem() {
+  const el = document.getElementById("tickerText");
+  if (!el) return;
+  const items = state.tickerItems || [];
+  if (items.length <= 1) return;
+  let nextIndex = Math.floor(Math.random() * items.length);
+  if (nextIndex === state.tickerIndex) nextIndex = (nextIndex + 1) % items.length;
+  el.classList.add("fade-out");
+  setTimeout(() => {
+    state.tickerIndex = nextIndex;
+    renderKehadiranTickerText();
+    el.classList.remove("fade-out");
+  }, 220); // samakan dengan durasi transition .ticker-text di CSS
+}
+
+function startKehadiranTicker() {
+  if (tickerRotateTimer) clearInterval(tickerRotateTimer);
+  tickerRotateTimer = setInterval(showNextTickerItem, TICKER_INTERVAL_MS);
 }
 
 // ============================================================

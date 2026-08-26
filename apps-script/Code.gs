@@ -25,6 +25,11 @@
  * spreadsheet mana sama sekali. Setelah itu selesai dijalankan, baru
  * Deploy seperti biasa. (Fungsi "siapkanKolomWaktuInput" dari versi
  * sebelumnya tidak perlu dijalankan lagi kalau sudah pernah dijalankan.)
+ *
+ * KHUSUS SEKALI SAJA JUGA untuk mengaktifkan backup harian otomatis ke
+ * Google Drive: jalankan (lewat dropdown sebelah tombol Run) fungsi
+ * "pasangTriggerBackupHarian" - lihat bagian "BACKUP OTOMATIS KE GOOGLE
+ * DRIVE" di bagian bawah file ini untuk detailnya.
  * ============================================================
  */
 
@@ -922,4 +927,79 @@ function padNomor(n) {
   var s = String(n);
   while (s.length < 3) s = '0' + s;
   return s;
+}
+
+// ============================================================
+// BACKUP OTOMATIS KE GOOGLE DRIVE
+// ============================================================
+// Backup ini adalah LAPISAN TAMBAHAN untuk jaga-jaga kalau spreadsheet
+// sumbernya sendiri rusak/hilang total - BUKAN pengganti Version History
+// bawaan Google Sheets (File > Version history), yang sudah otomatis
+// mencatat semua perubahan/edit dan tidak perlu dibangun manual di sini.
+//
+// Cara pasang (SEKALI SAJA): buka dropdown fungsi di sebelah tombol Run
+// pada editor Apps Script, pilih "pasangTriggerBackupHarian", lalu Run.
+// Setelah itu backup akan otomatis jalan sendiri tiap hari - tidak perlu
+// disentuh lagi.
+
+// Nama folder utama tempat semua backup disimpan di Drive akun yang
+// menjalankan script ini (akun "Me" saat deploy Web App / pasang trigger).
+var BACKUP_FOLDER_NAME = 'Backup Dashboard Puskesmas Pasir Panjang';
+var BACKUP_TRIGGER_HANDLER = 'backupSemuaSpreadsheetKeGDrive';
+
+function getOrCreateBackupFolder() {
+  var folders = DriveApp.getFoldersByName(BACKUP_FOLDER_NAME);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(BACKUP_FOLDER_NAME);
+}
+
+// Menyalin SEMUA spreadsheet tahun (dari peta tahun -> ID spreadsheet,
+// lihat getYearSpreadsheetMap) ke folder backup, dengan nama menyertakan
+// tanggal backup hari itu. Setiap hari dibuat salinan PENUH yang baru -
+// jadi kalau ada data tahun lalu yang diedit ulang hari ini, perubahan itu
+// otomatis ikut ke backup besok (bukan cuma snapshot sekali waktu dibuat).
+// TIDAK ADA penghapusan backup lama - semua disimpan selamanya (ukuran
+// data kecil, tidak masalah menumpuk terus).
+function backupSemuaSpreadsheetKeGDrive() {
+  var folder = getOrCreateBackupFolder();
+  var tanggalBackup = Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd');
+  var map = getYearSpreadsheetMap();
+  var tahunList = Object.keys(map);
+  var hasil = [];
+
+  tahunList.forEach(function (tahun) {
+    try {
+      var fileAsli = DriveApp.getFileById(map[tahun]);
+      var namaBackup = 'Backup ' + tahun + ' - ' + tanggalBackup;
+      fileAsli.makeCopy(namaBackup, folder);
+      hasil.push(tahun + ': OK');
+    } catch (err) {
+      // Satu tahun gagal (misal ID sudah tidak valid) tidak boleh
+      // menggagalkan backup tahun-tahun lain - dicatat saja, lanjut.
+      hasil.push(tahun + ': GAGAL (' + err.message + ')');
+    }
+  });
+
+  Logger.log('Backup ' + tanggalBackup + ': ' + hasil.join(', '));
+  return hasil;
+}
+
+// WAJIB DIJALANKAN SEKALI SAJA (lewat tombol Run di editor) untuk memasang
+// jadwal backup harian otomatis. Aman dijalankan berulang - kalau trigger-nya
+// sudah ada, tidak dipasang dobel.
+function pasangTriggerBackupHarian() {
+  var sudahAda = ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === BACKUP_TRIGGER_HANDLER;
+  });
+  if (sudahAda) {
+    Logger.log('Trigger backup harian sudah terpasang sebelumnya - tidak dipasang ulang.');
+    return;
+  }
+  ScriptApp.newTrigger(BACKUP_TRIGGER_HANDLER)
+    .timeBased()
+    .everyDays(1)
+    .atHour(2) // sekitar jam 2 pagi WITA - waktu paling sepi, sebelum jam kerja
+    .inTimezone(TIMEZONE)
+    .create();
+  Logger.log('Trigger backup harian berhasil dipasang - akan otomatis jalan tiap hari sekitar jam 2 pagi WITA.');
 }

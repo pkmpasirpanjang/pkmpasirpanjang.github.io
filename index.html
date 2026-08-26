@@ -16,7 +16,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=25">
+<link rel="stylesheet" href="css/style.css?v=27">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body>
@@ -62,6 +62,14 @@
   </div>
 
   <p id="dataLoadingIndicator" class="loading-indicator hidden">⏳ Memuat data terbaru...</p>
+
+  <!-- ============ TICKER STATUS KEHADIRAN HARI INI ============ -->
+  <div id="kehadiranTicker" class="kehadiran-ticker">
+    <span class="ticker-icon" aria-hidden="true">📢</span>
+    <div class="ticker-track">
+      <span id="tickerText" class="ticker-text">Memuat status kehadiran hari ini...</span>
+    </div>
+  </div>
 
   <!-- ============ TAB: KALENDER ============ -->
   <section id="tab-kalender" class="tab-panel active">
@@ -320,7 +328,7 @@
       <path d="M13 13h8l3 4.5 3-4.5h8l-8 10.5L35 35h-8l-3-4.5L21 35h-8l8-11.5z" fill="#ffffff"/>
     </svg>
   </button>
-  <div id="exportChoices" class="export-choices hidden">
+  <div id="exportChoices" class="export-choices">
     <button type="button" class="export-choice-btn" data-jenis="absen"><span class="export-choice-icon">📋</span> Kehadiran</button>
     <button type="button" class="export-choice-btn" data-jenis="apel"><span class="export-choice-icon">🙋</span> Apel</button>
     <button type="button" class="export-choice-btn" data-jenis="kegiatan"><span class="export-choice-icon">🧭</span> Kegiatan Luar</button>
@@ -332,7 +340,7 @@
   <button id="socialToggleBtn" class="social-toggle">
     <img src="https://cdn.simpleicons.org/googlemessages/FFFFFF" alt="Menu sosial media">
   </button>
-  <div id="socialLinks" class="social-links hidden">
+  <div id="socialLinks" class="social-links">
     <a id="socialWa" href="#" target="_blank" rel="noopener" title="WhatsApp"><img src="https://cdn.simpleicons.org/whatsapp/25D366" alt="WhatsApp"></a>
     <a id="socialFb" href="#" target="_blank" rel="noopener" title="Facebook"><img src="https://cdn.simpleicons.org/facebook/1877F2" alt="Facebook"></a>
     <a id="socialIg" href="#" target="_blank" rel="noopener" title="Instagram"><img src="https://cdn.simpleicons.org/instagram/E4405F" alt="Instagram"></a>
@@ -372,10 +380,10 @@
 </footer>
 
 <script src="js/config.js?v=26"></script>
-<script src="js/core.js?v=26"></script>
+<script src="js/core.js?v=27"></script>
 <script src="js/calendar.js?v=26"></script>
-<script src="js/forms.js?v=26"></script>
+<script src="js/forms.js?v=27"></script>
 <script src="js/stats.js?v=26"></script>
-<script src="js/export.js?v=26"></script>
+<script src="js/export.js?v=27"></script>
 </body>
 </html>

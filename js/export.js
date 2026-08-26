@@ -8,14 +8,10 @@
 let exportJenisTerpilih = null; // "absen" | "apel" | "kegiatan"
 
 function setupExportMenu() {
-  document.getElementById("exportToggleBtn").addEventListener("click", () => {
-    document.getElementById("exportChoices").classList.toggle("hidden");
-  });
-
   document.querySelectorAll(".export-choice-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       exportJenisTerpilih = btn.dataset.jenis;
-      document.getElementById("exportChoices").classList.add("hidden");
+      closeFloatingMenu(document.querySelector(".export-menu"));
 
       const now = new Date();
       const firstOfMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`;
