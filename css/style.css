@@ -282,16 +282,25 @@ h2 {
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-family: var(--font-body);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   line-height: 1.35;
-  color: #fff;
+  color: #FFF3E0;
   text-shadow: 0 1px 2px rgba(0,0,0,0.25);
   white-space: normal;
   word-break: break-word;
   transition: opacity 0.22s ease, transform 0.22s ease;
   opacity: 1;
   transform: translateY(0);
+}
+.ticker-text .ticker-nama {
+  font-weight: 800;
+  color: #FFFFFF;
+}
+.ticker-text .ticker-kegiatan {
+  font-style: italic;
+  font-weight: 600;
+  color: #FFE1EC;
 }
 .ticker-text.fade-out {
   opacity: 0;

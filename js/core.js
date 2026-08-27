@@ -421,16 +421,37 @@ function setupFloatingMenus() {
 // ============================================================
 // TICKER STATUS KEHADIRAN HARI INI
 // ============================================================
-// Menampilkan satu per satu (berganti tiap ~1.8 detik) nama pegawai yang
-// hari ini sedang sakit/izin atau sedang kegiatan luar gedung, diacak
-// urutannya. Kalau semua pegawai hadir normal (tidak ada yang sakit/izin/
-// dinas luar sama sekali hari ini), tampilkan pesan statis.
+// Menampilkan satu per satu (berganti tiap ~2 detik) nama pegawai yang
+// hari ini sedang tidak hadir (sakit/izin/cuti/tanpa keterangan) atau
+// sedang kegiatan luar gedung, urutan dipilih acak. Kalau semua pegawai
+// hadir normal (tidak ada satu pun catatan hari ini), tampilkan pesan
+// statis.
 const TICKER_INTERVAL_MS = 2000;
 let tickerRotateTimer = null;
+
+// Emoji & teks per status - sesuaikan di sini kalau mau ganti emoji atau
+// menambah status lain (harus sama persis dengan CONFIG.STATUS_LIST di
+// config.js supaya konsisten).
+const TICKER_STATUS_INFO = {
+  "Sakit": { emoji: "🤒", teks: "sakit" },
+  "Izin": { emoji: "🙋", teks: "izin" },
+  "Cuti": { emoji: "🏖️", teks: "cuti" },
+  "Alpa/Tanpa Keterangan": { emoji: "⚠️", teks: "tanpa keterangan" }
+};
 
 function todayDateKey() {
   const now = new Date();
   return dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+// Escape dasar supaya nama/kegiatan/lokasi yang mengandung karakter mirip
+// HTML tidak merusak tampilan ticker - perlu karena sekarang ticker dirender
+// sebagai innerHTML (untuk bisa menebalkan nama & memiringkan nama kegiatan).
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function rebuildKehadiranTicker() {
@@ -438,17 +459,22 @@ function rebuildKehadiranTicker() {
   const items = [];
 
   state.data.absensi
-    .filter(a => a.Tanggal === key && (a.Status === "Sakit" || a.Status === "Izin"))
+    .filter(a => a.Tanggal === key && TICKER_STATUS_INFO[a.Status])
     .forEach(a => {
-      items.push(a.Status === "Sakit"
-        ? `${a.Nama} sedang sakit hari ini`
-        : `${a.Nama} sedang izin hari ini`);
+      const info = TICKER_STATUS_INFO[a.Status];
+      items.push(
+        `${info.emoji} <span class="ticker-nama">${escapeHtml(a.Nama)}</span> sedang ${info.teks} hari ini`
+      );
     });
 
   state.data.kegiatanLuar
     .filter(k => k.Tanggal === key)
     .forEach(k => {
-      items.push(`${k.Nama} sedang melaksanakan ${k.NamaKegiatan || "kegiatan"} di ${k.Lokasi || "-"}`);
+      items.push(
+        `🚗 <span class="ticker-nama">${escapeHtml(k.Nama)}</span> sedang melaksanakan ` +
+        `<span class="ticker-kegiatan">${escapeHtml(k.NamaKegiatan || "kegiatan")}</span> di ` +
+        `📍 ${escapeHtml(k.Lokasi || "-")}`
+      );
     });
 
   state.tickerItems = items;
@@ -462,7 +488,7 @@ function renderKehadiranTickerText() {
   const el = document.getElementById("tickerText");
   if (!el) return;
   const items = state.tickerItems || [];
-  el.textContent = items.length ? items[state.tickerIndex % items.length] : "Semua pegawai hadir hari ini 👍";
+  el.innerHTML = items.length ? items[state.tickerIndex % items.length] : "Semua pegawai hadir hari ini 👍";
 }
 
 // Dipilih ACAK PENUH setiap giliran (bukan geser berurutan lewat 1 daftar
