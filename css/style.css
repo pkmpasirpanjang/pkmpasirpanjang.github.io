@@ -9,6 +9,7 @@
   --glass-border: rgba(255, 255, 255, 0.20);
   --accent-gold: #E8AC3E;
   --accent-teal: #48B8A6;
+  --accent-sky: #4FC3E8;
   --text-light: #F5F7F4;
   --text-muted: #C9D6D0;
   --danger: #E4626F;
@@ -355,7 +356,6 @@ h2 {
 .cal-cell:hover { background: var(--glass-bg-strong); border-color: var(--glass-border); transform: translateY(-2px); transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease; }
 .cal-cell:active { transform: scale(0.96) translateY(-2px); }
 .cal-cell.empty { visibility: hidden; cursor: default; }
-.cal-cell.today { border-color: var(--accent-gold); background: rgba(232,172,62,0.10); }
 .cal-daynum {
   font-family: var(--font-display);
   font-size: clamp(16px, 4.2vw, 22px);
@@ -368,6 +368,17 @@ h2 {
 .dot-kegiatan { background: var(--accent-teal); }
 .dot-libur { background: var(--accent-gold); }
 .cal-cell.libur { background: rgba(232,172,62,0.14); border-color: rgba(232,172,62,0.35); }
+
+/* "Hari ini" - taruh SETELAH .libur supaya kalau kebetulan hari ini juga
+   hari libur, gaya "hari ini" yang menang (lebih penting untuk langsung
+   dikenali daripada status libur, yang sudah ada penanda 🎌 tersendiri). */
+.cal-cell.today {
+  border-color: var(--accent-sky);
+  border-width: 2px;
+  background: rgba(79, 195, 232, 0.16);
+  box-shadow: 0 0 0 3px rgba(79, 195, 232, 0.14);
+}
+.cal-cell.today .cal-daynum { color: var(--accent-sky); }
 .libur-mark { font-size: 13px; line-height: 1; }
 .cal-badge-count {
   font-size: 10px;
