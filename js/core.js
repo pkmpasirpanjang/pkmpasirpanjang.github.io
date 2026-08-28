@@ -23,7 +23,8 @@ const state = {
   loadedMonths: new Set(),          // "YYYY-MM" bulan yang data Absensi/KegiatanLuar/Apel-nya sudah diambil sesi ini
   tahunBelumAda: null,               // diisi tahun (string) kalau permintaan terakhir gagal karena spreadsheet tahun itu belum dibuat
   tickerItems: [],                   // daftar teks ticker "status kehadiran hari ini" (sudah diacak)
-  tickerIndex: 0                     // index item ticker yang sedang ditampilkan
+  tickerIndex: 0,                    // index item ticker yang sedang ditampilkan
+  activeTab: "kalender"              // tab-panel yang sedang aktif (dipakai nav.js & refreshDataSetelahSimpan)
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -99,7 +100,6 @@ function formatTanggalIndo(tglKey) {
 // ============================================================
 document.addEventListener("DOMContentLoaded", async () => {
   applySocialLinks();
-  setupTabs();
   setupCalendarNav();
   setupModals();
   setupAdmin();
@@ -329,23 +329,6 @@ function renderSectionSafely(namaBagian, fn) {
   } catch (err) {
     console.error(`Gagal me-render bagian "${namaBagian}":`, err);
   }
-}
-
-// ============================================================
-// TABS
-// ============================================================
-function setupTabs() {
-  document.querySelectorAll(".tab-btn[data-tab]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.remove("active"));
-      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-      btn.classList.add("active");
-      document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
-      // Pastikan data yang dibutuhkan tab ini sudah tersedia (ambil dari server
-      // kalau belum pernah dimuat sesi ini, instan kalau sudah pernah).
-      await loadDataForTab(btn.dataset.tab);
-    });
-  });
 }
 
 // ============================================================

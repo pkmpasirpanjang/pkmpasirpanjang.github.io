@@ -402,7 +402,7 @@ async function sendAction(action, data) {
 // lama karena nomor baris bisa berpindah akibat pengurutan otomatis di server.
 async function refreshDataSetelahSimpan() {
   state.loadedMonths.clear();
-  const activeTab = document.querySelector(".tab-btn[data-tab].active")?.dataset.tab || "kalender";
+  const activeTab = state.activeTab || "kalender";
   await ensureMonthsLoaded([currentMonthKey()]);
   if (activeTab !== "kalender") await loadDataForTab(activeTab);
 
@@ -432,23 +432,12 @@ function setSimpanButtonsDisabled(disabled) {
 // ============================================================
 // ADMIN MODE
 // ============================================================
+// Tombol pemicu login (kalau belum login) sekarang ditangani di nav.js
+// (klik tab Admin -> showModal("pinModal") saat state.isAdmin masih false).
+// Di sini cuma urus: cek sesi tersimpan saat load, submit PIN, dan logout.
 function setupAdmin() {
   const savedPin = sessionStorage.getItem("adminPin");
   if (savedPin) activateAdmin();
-
-  document.getElementById("adminToggleBtn").addEventListener("click", () => {
-    if (state.isAdmin) {
-      sessionStorage.removeItem("adminPin");
-      state.isAdmin = false;
-      document.getElementById("adminToggleBtn").textContent = "🔒 Mode Admin";
-      document.getElementById("adminToggleBtn").classList.remove("admin-active");
-      document.getElementById("rangeAbsenBtn").classList.add("hidden");
-      document.getElementById("exportChoices").classList.add("hidden");
-      showToast("Keluar dari mode admin.");
-    } else {
-      showModal("pinModal");
-    }
-  });
 
   document.getElementById("formPin").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -475,11 +464,22 @@ function setupAdmin() {
 
 function activateAdmin() {
   state.isAdmin = true;
-  document.getElementById("adminToggleBtn").textContent = "🔓 Admin Aktif";
-  document.getElementById("adminToggleBtn").classList.add("admin-active");
-  document.getElementById("rangeAbsenBtn").classList.remove("hidden");
+  const btn = document.getElementById("navAdminBtn");
+  btn.querySelector(".nav-icon").textContent = "🔓";
+  btn.classList.add("admin-active-state");
   cekTahunIniUntukBanner();
   updateTahunBanner(); // kalau banner sudah tampil (staf biasa lihat sebelum admin login), tombolnya langsung muncul
+}
+
+// Dipanggil dari submenu tab Admin ("Logout Mode Admin" - lihat nav.js).
+function logoutAdmin() {
+  sessionStorage.removeItem("adminPin");
+  state.isAdmin = false;
+  const btn = document.getElementById("navAdminBtn");
+  btn.querySelector(".nav-icon").textContent = "🔒";
+  btn.classList.remove("admin-active-state");
+  closeFloatingMenu(document.querySelector(".export-menu"));
+  showToast("Keluar dari mode admin.");
 }
 
 function setupRangeAbsenForm() {
