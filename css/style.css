@@ -963,10 +963,10 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   border-bottom: 1px solid var(--glass-border);
 }
 .id-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  column-gap: 8px;
   align-items: baseline;
-  gap: 4px 8px;
   font-size: 13px;
   line-height: 1.4;
 }
@@ -975,8 +975,6 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   font-weight: 600;
   font-size: 12px;
   letter-spacing: 0.02em;
-  min-width: 92px;
-  flex-shrink: 0;
 }
 .id-value {
   color: var(--accent-teal);
