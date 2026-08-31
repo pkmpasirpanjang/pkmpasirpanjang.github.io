@@ -133,11 +133,13 @@ html, body {
   font-size: clamp(15px, 4vw, 26px);
   font-weight: 800;
   line-height: 1.25;
+  text-wrap: balance;
 }
 .kop-sub {
   margin: 0;
   font-size: 13px;
   color: var(--text-muted);
+  text-wrap: balance;
 }
 
 /* ============================================================
@@ -233,7 +235,6 @@ html, body {
     bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
   .content, .site-footer { padding-bottom: 84px; }
-  .kehadiran-ticker { margin-top: 0; }
 }
 
 /* --- DESKTOP (>768px): baris terpisah di bawah kop, kop tetap utuh --- */
@@ -328,10 +329,11 @@ h2 {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 18px;
+  margin-top: 10px;
   margin-bottom: 20px;
   border-radius: var(--radius-md);
   border: 1px solid rgba(255,255,255,0.28);
-  background: linear-gradient(100deg, var(--accent-gold) 0%, var(--danger) 100%);
+  background: linear-gradient(100deg, rgba(232,172,62,0.88) 0%, rgba(228,98,111,0.88) 100%);
   box-shadow: 0 8px 22px rgba(0,0,0,0.3);
 }
 .ticker-icon {
@@ -374,7 +376,7 @@ h2 {
   transform: translateY(4px);
 }
 @media (max-width: 560px) {
-  .kehadiran-ticker { padding: 9px 12px; gap: 8px; margin-bottom: 16px; }
+  .kehadiran-ticker { padding: 9px 12px; gap: 8px; margin-top: 8px; margin-bottom: 16px; }
   .ticker-icon { font-size: 14px; }
   .ticker-text { font-size: 11px; line-height: 1.3; -webkit-line-clamp: 3; }
 }
@@ -619,6 +621,49 @@ h2 {
 
 /* Reaksi singkat (menangis/tepuk tangan) di atas pop-up detail statistik */
 #statDetailModal .modal-box { position: relative; }
+#profilModal .modal-box { position: relative; }
+
+/* ============================================================
+   KONFETI (rekor kehadiran sempurna - popup Profil Ringkas)
+   ============================================================ */
+.confetti-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 8;
+  border-radius: inherit;
+}
+.confetti-piece {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.95;
+  animation-name: confetti-fall;
+  animation-timing-function: cubic-bezier(.35,0,.65,1);
+  animation-fill-mode: forwards;
+}
+@keyframes confetti-fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(360px) rotate(560deg); opacity: 0; }
+}
+.confetti-clap {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  font-size: 50px;
+  opacity: 0;
+  animation: confetti-clap-pop 1.2s ease-out forwards;
+}
+@keyframes confetti-clap-pop {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  40% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -60%) scale(1); opacity: 0; }
+}
+
 .reaction-overlay {
   position: absolute;
   inset: 0;
@@ -939,6 +984,8 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   font-family: var(--font-display);
   word-break: break-word;
 }
+.id-value.id-value-md { font-size: 12px; }
+.id-value.id-value-sm { font-size: 11px; line-height: 1.3; }
 
 /* ============================================================
    PROFIL RINGKAS PEGAWAI (modal dari fitur Cari)
@@ -995,6 +1042,9 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   padding: 14px 8px;
   text-align: center;
 }
+.profil-stat-card.clickable { cursor: pointer; transition: background 0.15s, transform 0.15s; }
+.profil-stat-card.clickable:hover { background: rgba(255,255,255,0.12); transform: translateY(-2px); }
+.profil-stat-card.clickable:active { transform: scale(0.97); }
 .profil-stat-num {
   font-family: var(--font-display);
   font-size: 24px;
@@ -1006,6 +1056,28 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
   font-size: 11px;
   color: var(--text-muted);
   margin-top: 4px;
+  font-weight: 600;
+}
+
+.btn-back {
+  background: none;
+  border: none;
+  color: var(--accent-teal);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 0 12px;
+  cursor: pointer;
+}
+.btn-back:hover { text-decoration: underline; }
+#profilDetailView h3 { margin: 0 0 12px; font-family: var(--font-display); font-size: 16px; }
+.profil-detail-list { display: flex; flex-direction: column; gap: 8px; }
+.profil-detail-date {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 

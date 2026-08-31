@@ -338,14 +338,16 @@ function openStatDetail(nama, type, pctInfo) {
   const identityEl = document.getElementById("statDetailIdentity");
   if (type === "absen" || type === "apel") {
     const pegawai = state.data.pegawai.find(p => p.Nama === nama);
+    const pangkat = (pegawai && pegawai.PangkatGolongan) || "-";
+    const jabatan = (pegawai && pegawai.Jabatan) || "-";
     const nipRow = state.isAdmin
       ? `<div class="id-row"><span class="id-label">NIP</span><span class="id-value">${(pegawai && pegawai.NIP) || "-"}</span></div>`
       : "";
     identityEl.innerHTML = `
       <div class="pegawai-id-card">
         ${nipRow}
-        <div class="id-row"><span class="id-label">Pangkat/Gol</span><span class="id-value">${(pegawai && pegawai.PangkatGolongan) || "-"}</span></div>
-        <div class="id-row"><span class="id-label">Jabatan</span><span class="id-value">${(pegawai && pegawai.Jabatan) || "-"}</span></div>
+        <div class="id-row"><span class="id-label">Pangkat/Gol</span><span class="id-value ${idValueSizeClass(pangkat)}">${pangkat}</span></div>
+        <div class="id-row"><span class="id-label">Jabatan</span><span class="id-value ${idValueSizeClass(jabatan)}">${jabatan}</span></div>
       </div>
     `;
   } else {

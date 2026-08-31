@@ -222,12 +222,27 @@ function renderCariResults() {
 // ============================================================
 // PROFIL RINGKAS PEGAWAI (kartu riwayat, dibuka dari hasil pencarian)
 // ============================================================
-const profilState = { nama: null, mode: "bulanan", year: null, month: null };
+const profilState = {
+  nama: null, mode: "bulanan", year: null, month: null,
+  rentang: null,       // { mulai, selesai } dari perhitungan terakhir - dipakai drill-down tanggal
+  confettiShown: false // sudah tampilkan konfeti untuk sesi buka popup INI - direset tiap openProfilRingkas()
+};
+
+// Label kategori untuk judul drill-down & pemetaan ke nilai Status di data absensi.
+const PROFIL_KATEGORI_LABEL = {
+  Sakit: "Sakit",
+  Izin: "Izin",
+  Cuti: "Cuti",
+  "Alpa/Tanpa Keterangan": "Tanpa Keterangan",
+  KegiatanLuar: "Kegiatan Luar Gedung"
+};
 
 function openProfilRingkas(nama) {
   const pegawai = state.data.pegawai.find(p => p.Nama === nama);
   profilState.nama = nama;
   profilState.mode = "bulanan";
+  profilState.rentang = null;
+  profilState.confettiShown = false; // sesi buka baru - konfeti boleh tampil lagi kalau rekornya sempurna
   const now = new Date();
   profilState.year = now.getFullYear();
   profilState.month = now.getMonth();
@@ -235,18 +250,24 @@ function openProfilRingkas(nama) {
   document.getElementById("profilNama").textContent = nama;
 
   // NIP cuma tampil untuk admin - sama seperti kartu identitas di Statistik.
+  // Jabatan/Pangkat yang panjang otomatis mengecil (idValueSizeClass) alih-
+  // alih membuat kartu identitas jauh lebih tinggi dan mendorong turun
+  // elemen-elemen lain di bawahnya.
+  const pangkat = (pegawai && pegawai.PangkatGolongan) || "-";
+  const jabatan = (pegawai && pegawai.Jabatan) || "-";
   const nipRow = state.isAdmin
     ? `<div class="id-row"><span class="id-label">NIP</span><span class="id-value">${escapeHtml((pegawai && pegawai.NIP) || "-")}</span></div>`
     : "";
   document.getElementById("profilIdentity").innerHTML = `
     ${nipRow}
-    <div class="id-row"><span class="id-label">Pangkat/Gol</span><span class="id-value">${escapeHtml((pegawai && pegawai.PangkatGolongan) || "-")}</span></div>
-    <div class="id-row"><span class="id-label">Jabatan</span><span class="id-value">${escapeHtml((pegawai && pegawai.Jabatan) || "-")}</span></div>
+    <div class="id-row"><span class="id-label">Pangkat/Gol</span><span class="id-value ${idValueSizeClass(pangkat)}">${escapeHtml(pangkat)}</span></div>
+    <div class="id-row"><span class="id-label">Jabatan</span><span class="id-value ${idValueSizeClass(jabatan)}">${escapeHtml(jabatan)}</span></div>
   `;
 
   document.querySelectorAll(".profil-mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === "bulanan"));
   document.getElementById("profilPeriodeBulanan").classList.remove("hidden");
   document.getElementById("profilPeriodeTahunan").classList.add("hidden");
+  hideProfilDetail();
 
   populateProfilTahunSelect();
   refreshProfilRingkas();
@@ -283,6 +304,7 @@ async function refreshProfilRingkas() {
   const nama = profilState.nama;
   const pegawai = state.data.pegawai.find(p => p.Nama === nama);
   const rentang = pegawai ? hitungRentangAktifPegawai(pegawai, mulai, selesai) : null;
+  profilState.rentang = rentang;
 
   if (!rentang) {
     grid.innerHTML = `<p class="empty-note">Pegawai belum/tidak aktif pada periode ini.</p>`;
@@ -297,6 +319,7 @@ async function refreshProfilRingkas() {
 
   const workingDays = countWorkingDaysInRange(rentang.mulai, rentang.selesai);
   const hadir = Math.max(workingDays - catatan.length, 0);
+  const pct = workingDays > 0 ? Math.round((hadir / workingDays) * 100) : null;
 
   const kegiatanDates = new Set(
     state.data.kegiatanLuar
@@ -306,12 +329,94 @@ async function refreshProfilRingkas() {
 
   grid.innerHTML = `
     <div class="profil-stat-card"><div class="profil-stat-num">${hadir}</div><div class="profil-stat-label">Hari Hadir</div></div>
-    <div class="profil-stat-card"><div class="profil-stat-num">${sakit}</div><div class="profil-stat-label">Sakit</div></div>
-    <div class="profil-stat-card"><div class="profil-stat-num">${izin}</div><div class="profil-stat-label">Izin</div></div>
-    <div class="profil-stat-card"><div class="profil-stat-num">${cuti}</div><div class="profil-stat-label">Cuti</div></div>
-    <div class="profil-stat-card"><div class="profil-stat-num">${alpa}</div><div class="profil-stat-label">Tanpa Keterangan</div></div>
-    <div class="profil-stat-card"><div class="profil-stat-num">${kegiatanDates.size}</div><div class="profil-stat-label">Kegiatan Luar</div></div>
+    <div class="profil-stat-card clickable" data-kategori="Sakit"><div class="profil-stat-num">${sakit}</div><div class="profil-stat-label">Sakit</div></div>
+    <div class="profil-stat-card clickable" data-kategori="Izin"><div class="profil-stat-num">${izin}</div><div class="profil-stat-label">Izin</div></div>
+    <div class="profil-stat-card clickable" data-kategori="Cuti"><div class="profil-stat-num">${cuti}</div><div class="profil-stat-label">Cuti</div></div>
+    <div class="profil-stat-card clickable" data-kategori="Alpa/Tanpa Keterangan"><div class="profil-stat-num">${alpa}</div><div class="profil-stat-label">Tanpa Keterangan</div></div>
+    <div class="profil-stat-card clickable" data-kategori="KegiatanLuar"><div class="profil-stat-num">${kegiatanDates.size}</div><div class="profil-stat-label">Kegiatan Luar</div></div>
   `;
+  grid.querySelectorAll(".profil-stat-card.clickable").forEach(card => {
+    card.addEventListener("click", () => showProfilDetail(card.dataset.kategori));
+  });
+
+  // Rekor sempurna (semua nol ATAU kehadiran 100%) - konfeti singkat, cuma
+  // sekali per sesi buka popup ini (tidak diulang tiap ganti bulan/tahun).
+  const rekorSempurna = (sakit === 0 && izin === 0 && cuti === 0 && alpa === 0) || pct === 100;
+  if (rekorSempurna && !profilState.confettiShown) {
+    profilState.confettiShown = true;
+    fireProfilConfetti();
+  }
+}
+
+// ============================================================
+// DRILL-DOWN: daftar tanggal per kategori (klik kartu statistik)
+// ============================================================
+function showProfilDetail(kategori) {
+  const { nama, rentang } = profilState;
+  if (!rentang) return;
+
+  let tanggalList;
+  if (kategori === "KegiatanLuar") {
+    tanggalList = Array.from(new Set(
+      state.data.kegiatanLuar
+        .filter(k => k.Nama === nama && k.Tanggal >= rentang.mulai && k.Tanggal <= rentang.selesai)
+        .map(k => k.Tanggal)
+    )).sort();
+  } else {
+    tanggalList = state.data.absensi
+      .filter(a => a.Nama === nama && a.Status === kategori && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+      .map(a => a.Tanggal)
+      .sort();
+  }
+
+  document.getElementById("profilDetailTitle").textContent = `Tanggal ${PROFIL_KATEGORI_LABEL[kategori] || kategori}`;
+  const listEl = document.getElementById("profilDetailList");
+  if (!tanggalList.length) {
+    listEl.innerHTML = `<p class="empty-note">Tidak ada tanggal untuk kategori ini pada periode ini.</p>`;
+  } else {
+    listEl.innerHTML = tanggalList.map(t => `<div class="profil-detail-date">${formatTanggalIndo(t)}</div>`).join("");
+  }
+  // Kegiatan luar sengaja cuma tampil tanggalnya saja di sini (bukan nama
+  // kegiatan/lokasi) - supaya tidak dobel fungsi dengan tab Statistik >
+  // Statistik Kegiatan Luar yang sudah punya rincian lengkapnya.
+  if (kategori === "KegiatanLuar") {
+    listEl.innerHTML += `<p class="form-hint">Untuk nama kegiatan & lokasi, buka tab Statistik → Statistik Kegiatan Luar.</p>`;
+  }
+
+  document.getElementById("profilMainView").classList.add("hidden");
+  document.getElementById("profilDetailView").classList.remove("hidden");
+}
+
+function hideProfilDetail() {
+  document.getElementById("profilDetailView").classList.add("hidden");
+  document.getElementById("profilMainView").classList.remove("hidden");
+}
+
+// ============================================================
+// KONFETI (rekor kehadiran sempurna)
+// ============================================================
+const PROFIL_CONFETTI_COLORS = ["#E8AC3E", "#48B8A6", "#E4626F", "#4FC3E8", "#FFFFFF"];
+
+function fireProfilConfetti() {
+  const layer = document.getElementById("profilConfettiLayer");
+  if (!layer) return;
+  layer.innerHTML = "";
+
+  for (let i = 0; i < 28; i++) {
+    const piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = PROFIL_CONFETTI_COLORS[Math.floor(Math.random() * PROFIL_CONFETTI_COLORS.length)];
+    piece.style.animationDuration = `${900 + Math.random() * 700}ms`;
+    piece.style.animationDelay = `${Math.random() * 200}ms`;
+    layer.appendChild(piece);
+  }
+  const clap = document.createElement("span");
+  clap.className = "confetti-clap";
+  clap.textContent = "👏";
+  layer.appendChild(clap);
+
+  setTimeout(() => { layer.innerHTML = ""; }, 1900);
 }
 
 function setupProfilModal() {
@@ -339,6 +444,7 @@ function setupProfilModal() {
     profilState.year = Number(e.target.value);
     refreshProfilRingkas();
   });
+  document.getElementById("profilDetailBack").addEventListener("click", hideProfilDetail);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

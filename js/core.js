@@ -437,6 +437,18 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;");
 }
 
+// Kelas ukuran font untuk .id-value (NIP/Pangkat/Jabatan) berdasarkan
+// panjang teksnya - dipakai di popup detail statistik & popup profil
+// ringkas, supaya nama jabatan yang panjang MENGECIL teksnya alih-alih
+// membuat kartu identitas jadi jauh lebih tinggi dan mendorong elemen lain
+// di bawahnya turun terlalu jauh.
+function idValueSizeClass(text) {
+  const len = (text || "").length;
+  if (len > 42) return "id-value-sm";
+  if (len > 26) return "id-value-md";
+  return "";
+}
+
 function rebuildKehadiranTicker() {
   const key = todayDateKey();
   const items = [];
