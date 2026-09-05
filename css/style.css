@@ -257,7 +257,7 @@ html, body {
 .content {
   max-width: 1000px;
   margin: 0 auto;
-  padding: 0 16px 24px;
+  padding: 0 16px 10px;
 }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -380,6 +380,150 @@ h2 {
   .ticker-icon { font-size: 14px; }
   .ticker-text { font-size: 11px; line-height: 1.3; -webkit-line-clamp: 3; }
 }
+
+/* ============================================================
+   KARTU CUACA (di bawah ticker)
+   ============================================================ */
+.weather-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: background 0.15s, transform 0.15s;
+}
+.weather-card:hover { transform: translateY(-1px); background: var(--glass-bg-strong); }
+.weather-card:active { transform: scale(0.99); }
+.weather-card-icon { font-size: 30px; line-height: 1; flex-shrink: 0; }
+.weather-card-info { flex: 1; min-width: 0; }
+.weather-card-loc {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.weather-card-desc {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.weather-card-temp {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent-teal);
+  flex-shrink: 0;
+}
+@media (max-width: 560px) {
+  .weather-card { padding: 11px 14px; gap: 10px; margin-bottom: 16px; }
+  .weather-card-icon { font-size: 24px; }
+  .weather-card-desc { font-size: 13px; }
+  .weather-card-temp { font-size: 17px; }
+}
+
+/* ============================================================
+   POPUP CUACA (5 kelurahan)
+   ============================================================ */
+.weather-kelurahan-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.weather-tab {
+  flex: 1;
+  min-width: 90px;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.weather-tab:hover { background: var(--glass-bg-strong); }
+.weather-tab.active {
+  background: var(--accent-teal);
+  border-color: var(--accent-teal);
+  color: #06231C;
+}
+.weather-date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.weather-date-nav #weatherDateLabel {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  min-width: 130px;
+  text-align: center;
+}
+.weather-date-nav .nav-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
+.weather-date-nav .nav-arrow:disabled:hover { background: transparent; }
+
+.weather-main-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 18px 12px;
+  margin-bottom: 12px;
+  background: rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+}
+.weather-popup-icon { font-size: 48px; line-height: 1; margin-bottom: 6px; }
+.weather-popup-temp {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent-teal);
+}
+.weather-popup-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.weather-main-display.has-kegiatan {
+  border: 2px solid var(--accent-teal);
+  box-shadow: 0 0 0 3px rgba(72,184,166,0.18);
+}
+
+.weather-kegiatan-badge {
+  background: rgba(72,184,166,0.16);
+  border: 1px solid var(--accent-teal);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.weather-fun-ticker {
+  background: linear-gradient(100deg, rgba(232,172,62,0.85), rgba(228,98,111,0.85));
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #FFF3E0;
+  line-height: 1.4;
+}
+
 
 .calendar-weekdays {
   display: grid;
@@ -622,6 +766,7 @@ h2 {
 /* Reaksi singkat (menangis/tepuk tangan) di atas pop-up detail statistik */
 #statDetailModal .modal-box { position: relative; }
 #profilModal .modal-box { position: relative; }
+#dateModal .modal-box { position: relative; }
 
 /* ============================================================
    KONFETI (rekor kehadiran sempurna - popup Profil Ringkas)
@@ -749,6 +894,21 @@ h2 {
   font-weight: 600;
   margin-bottom: 12px;
 }
+.ulang-tahun-bar {
+  background: linear-gradient(100deg, rgba(232,172,62,0.22), rgba(228,98,111,0.22));
+  border: 1px solid rgba(232,172,62,0.5);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.ulang-tahun-list { display: flex; flex-direction: column; gap: 6px; }
+.ulang-tahun-row {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-light);
+  line-height: 1.4;
+}
+.cal-badge-birthday { font-size: 11px; line-height: 1; }
 .libur-actions { margin-bottom: 16px; display: flex; gap: 10px; }
 .btn-libur {
   background: rgba(232,172,62,0.16);
@@ -1295,7 +1455,7 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
    ============================================================ */
 .site-footer {
   text-align: center;
-  padding: 16px 16px 40px;
+  padding: 8px 16px 40px;
   font-size: 12px;
   color: var(--text-muted);
 }

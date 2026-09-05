@@ -96,6 +96,7 @@ function openDateModal(key) {
 
     modalColumns.classList.add("hidden");
     document.getElementById("apelAdminSection").classList.add("hidden");
+    document.getElementById("ulangTahunBar").classList.add("hidden");
     document.getElementById("liburBar").classList.add("hidden");
     document.querySelector(".libur-actions").classList.add("hidden");
     document.getElementById("beriNomorTanggalBtn").classList.add("hidden");
@@ -104,6 +105,24 @@ function openDateModal(key) {
   }
   tahunModalMsg.classList.add("hidden");
   modalColumns.classList.remove("hidden");
+
+  const ulangTahunList = getPegawaiUlangTahunPadaTanggal(key);
+  const ulangTahunBar = document.getElementById("ulangTahunBar");
+  if (ulangTahunList.length) {
+    document.getElementById("ulangTahunList").innerHTML = ulangTahunList
+      .map(p => `<div class="ulang-tahun-row">🎂 Happy Birthday, ${escapeHtml(p.Nama)}!</div>`)
+      .join("");
+    ulangTahunBar.classList.remove("hidden");
+    // Confeti cuma untuk tanggal HARI INI yang sesungguhnya (bukan tanggal
+    // lain yang kebetulan tanggal lahirnya cocok) - supaya terasa seperti
+    // perayaan sungguhan, bukan muncul tiap buka tanggal ulang tahun siapa
+    // pun kapan saja dibuka.
+    if (key === todayDateKey()) {
+      fireConfettiInLayer("dateConfettiLayer", KUE_ULANG_TAHUN_SVG);
+    }
+  } else {
+    ulangTahunBar.classList.add("hidden");
+  }
 
   const liburRecord = getLiburRecord(key);
   const liburBar = document.getElementById("liburBar");
@@ -268,4 +287,3 @@ async function submitApel() {
     SiangList: Array.from(state.apelSiangSelected)
   });
 }
-

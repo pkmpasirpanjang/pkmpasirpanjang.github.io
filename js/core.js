@@ -449,6 +449,87 @@ function idValueSizeClass(text) {
   return "";
 }
 
+// ============================================================
+// ULANG TAHUN PEGAWAI
+// ============================================================
+// Ambil "MM-DD" dari nilai kolom TanggalLahir di sheet Pegawai, apa pun
+// bentuknya: sel bertipe Date asli di Sheets sudah dinormalisasi backend
+// jadi teks "yyyy-MM-dd" (lihat sheetToObjects di Code.gs), tapi kalau
+// diisi manual sebagai teks bebas ("14/05/1990" dst) tetap dicoba dibaca.
+// Asumsi urutan dd/MM/yyyy (format tanggal Indonesia), bukan MM/dd/yyyy.
+function extractBulanTanggalLahir(raw) {
+  if (!raw) return null;
+  const str = String(raw).trim();
+  let m = str.match(/^\d{4}-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}`;
+  m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-]\d{4}/);
+  if (m) return `${pad2(Number(m[2]))}-${pad2(Number(m[1]))}`;
+  return null;
+}
+
+// Ambil nilai TanggalLahir dari objek pegawai - toleran terhadap variasi
+// penulisan header kolom di sheet (spasi, underscore, huruf besar/kecil),
+// jaga-jaga kalau headernya tidak persis "TanggalLahir".
+function getTanggalLahirValue(p) {
+  if (p.TanggalLahir !== undefined && p.TanggalLahir !== "") return p.TanggalLahir;
+  const key = Object.keys(p).find(k => k.replace(/[\s_]/g, "").toLowerCase() === "tanggallahir");
+  return key ? p[key] : null;
+}
+
+// Daftar pegawai yang ulang tahun pada tanggal (key "yyyy-MM-dd") tertentu -
+// dipakai untuk badge kalender, bar di popup detail tanggal, dan ticker.
+function getPegawaiUlangTahunPadaTanggal(dateKeyStr) {
+  const mmdd = dateKeyStr.slice(5);
+  return state.data.pegawai.filter(p => extractBulanTanggalLahir(getTanggalLahirValue(p)) === mmdd);
+}
+
+// ============================================================
+// KONFETI (dipakai di popup profil ringkas & popup detail tanggal -
+// rekor kehadiran sempurna / ulang tahun)
+// ============================================================
+const CONFETTI_COLORS = ["#E8AC3E", "#48B8A6", "#E4626F", "#4FC3E8", "#FFFFFF"];
+
+// Kue ulang tahun putih dalam SVG (bukan emoji) - supaya warnanya PASTI
+// putih di semua perangkat. Warna emoji bawaan (🎂) ditentukan font HP
+// masing-masing dan tidak bisa diubah lewat CSS.
+const KUE_ULANG_TAHUN_SVG = `
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="32" cy="9" rx="2.6" ry="4.6" fill="#FFB020"/>
+  <rect x="30" y="13" width="4" height="11" rx="1.5" fill="#FDF6E3"/>
+  <rect x="13" y="27" width="38" height="15" rx="4" fill="#FFFFFF" stroke="#E8AC3E" stroke-width="2"/>
+  <rect x="7" y="41" width="50" height="17" rx="4" fill="#FFFFFF" stroke="#E8AC3E" stroke-width="2"/>
+  <circle cx="21" cy="34.5" r="2.3" fill="#E4626F"/>
+  <circle cx="32" cy="34.5" r="2.3" fill="#48B8A6"/>
+  <circle cx="43" cy="34.5" r="2.3" fill="#E4626F"/>
+</svg>`;
+
+function fireConfettiInLayer(layerId, centerContentHtml) {
+  const layer = document.getElementById(layerId);
+  if (!layer) return;
+  layer.innerHTML = "";
+
+  for (let i = 0; i < 28; i++) {
+    const piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+    piece.style.animationDuration = `${900 + Math.random() * 700}ms`;
+    piece.style.animationDelay = `${Math.random() * 200}ms`;
+    layer.appendChild(piece);
+  }
+  if (centerContentHtml) {
+    const clap = document.createElement("div");
+    clap.className = "confetti-clap";
+    // innerHTML (bukan textContent) - supaya bisa diisi SVG custom (mis.
+    // kue ulang tahun putih), bukan cuma karakter emoji polos yang warnanya
+    // tidak bisa diatur (warna emoji ditentukan font perangkat, di luar
+    // kendali CSS kita).
+    clap.innerHTML = centerContentHtml;
+    layer.appendChild(clap);
+  }
+  setTimeout(() => { layer.innerHTML = ""; }, 1900);
+}
+
 function rebuildKehadiranTicker() {
   const key = todayDateKey();
   const items = [];
@@ -471,6 +552,10 @@ function rebuildKehadiranTicker() {
         `📍 ${escapeHtml(k.Lokasi || "-")}`
       );
     });
+
+  getPegawaiUlangTahunPadaTanggal(key).forEach(p => {
+    items.push(`🎂 Selamat ulang tahun, <span class="ticker-nama">${escapeHtml(p.Nama)}</span>!`);
+  });
 
   state.tickerItems = items;
   if (state.tickerIndex === undefined || state.tickerIndex >= items.length) {
