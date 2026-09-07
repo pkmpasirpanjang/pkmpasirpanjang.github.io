@@ -321,6 +321,31 @@ async function refreshProfilRingkas() {
   const hadir = Math.max(workingDays - catatan.length, 0);
   const pct = workingDays > 0 ? Math.round((hadir / workingDays) * 100) : null;
 
+  // Persentase Apel Pagi/Siang - "apel" di data berarti TIDAK IKUT sesi itu
+  // (sama seperti logika rekap Excel Apel yang sudah ada): hari kerja yang
+  // sudah libur/absen penuh otomatis ikut terhitung tidak ikut apel juga.
+  const workingDaysList = getWorkingDaysListInRange(rentang.mulai, rentang.selesai);
+  const absenDatesSet = new Set(catatan.map(a => a.Tanggal));
+  const missedPagi = new Set(absenDatesSet);
+  state.data.apel
+    .filter(a => a.Nama === nama && a.Sesi === "Pagi" && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+    .forEach(a => missedPagi.add(a.Tanggal));
+  const missedSiang = new Set(absenDatesSet);
+  state.data.apel
+    .filter(a => a.Nama === nama && a.Sesi === "Siang" && a.Tanggal >= rentang.mulai && a.Tanggal <= rentang.selesai)
+    .forEach(a => missedSiang.add(a.Tanggal));
+  const ikutPagi = workingDaysList.filter(t => !missedPagi.has(t)).length;
+  const ikutSiang = workingDaysList.filter(t => !missedSiang.has(t)).length;
+  const wajibApel = (typeof pegawaiWajibApel === "function") ? pegawaiWajibApel(pegawai) : true;
+  const pctPagi = wajibApel && workingDays > 0 ? Math.round((ikutPagi / workingDays) * 100) : null;
+  const pctSiang = wajibApel && workingDays > 0 ? Math.round((ikutSiang / workingDays) * 100) : null;
+
+  document.getElementById("profilPersenRow").innerHTML = `
+    <div class="profil-persen-item"><div class="profil-persen-num">${pct === null ? "-" : pct + "%"}</div><div class="profil-persen-label">Kehadiran</div></div>
+    <div class="profil-persen-item"><div class="profil-persen-num">${pctPagi === null ? "-" : pctPagi + "%"}</div><div class="profil-persen-label">Apel Pagi</div></div>
+    <div class="profil-persen-item"><div class="profil-persen-num">${pctSiang === null ? "-" : pctSiang + "%"}</div><div class="profil-persen-label">Apel Siang</div></div>
+  `;
+
   const kegiatanDates = new Set(
     state.data.kegiatanLuar
       .filter(k => k.Nama === nama && k.Tanggal >= rentang.mulai && k.Tanggal <= rentang.selesai)

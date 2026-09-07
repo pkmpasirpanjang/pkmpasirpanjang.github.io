@@ -476,6 +476,15 @@ function getTanggalLahirValue(p) {
   return key ? p[key] : null;
 }
 
+// Nama panggilan pegawai (dipakai khusus untuk ucapan ulang tahun, biar
+// terasa akrab) - kalau kolomnya belum diisi/belum ada, otomatis pakai
+// nama lengkap sebagai cadangan supaya tidak pernah kosong.
+function getNamaPanggilan(p) {
+  if (p.NamaPanggilan) return p.NamaPanggilan;
+  const key = Object.keys(p).find(k => k.replace(/[\s_]/g, "").toLowerCase() === "namapanggilan");
+  return (key && p[key]) ? p[key] : p.Nama;
+}
+
 // Daftar pegawai yang ulang tahun pada tanggal (key "yyyy-MM-dd") tertentu -
 // dipakai untuk badge kalender, bar di popup detail tanggal, dan ticker.
 function getPegawaiUlangTahunPadaTanggal(dateKeyStr) {
@@ -554,7 +563,7 @@ function rebuildKehadiranTicker() {
     });
 
   getPegawaiUlangTahunPadaTanggal(key).forEach(p => {
-    items.push(`🎂 Selamat ulang tahun, <span class="ticker-nama">${escapeHtml(p.Nama)}</span>!`);
+    items.push(`🎂 Selamat ulang tahun, <span class="ticker-nama">${escapeHtml(getNamaPanggilan(p))}</span>!`);
   });
 
   state.tickerItems = items;

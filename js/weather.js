@@ -261,7 +261,7 @@ function startWeatherFunTicker(messages) {
       if (next === weatherFunTickerIndex) next = (next + 1) % weatherFunTickerItems.length;
       weatherFunTickerIndex = next;
       document.getElementById("weatherFunTickerText").innerHTML = weatherFunTickerItems[next];
-    }, 2000);
+    }, 3800);
   }
 }
 function stopWeatherFunTicker() {

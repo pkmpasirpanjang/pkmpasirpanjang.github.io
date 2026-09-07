@@ -110,7 +110,7 @@ function openDateModal(key) {
   const ulangTahunBar = document.getElementById("ulangTahunBar");
   if (ulangTahunList.length) {
     document.getElementById("ulangTahunList").innerHTML = ulangTahunList
-      .map(p => `<div class="ulang-tahun-row">🎂 Happy Birthday, ${escapeHtml(p.Nama)}!</div>`)
+      .map(p => `<div class="ulang-tahun-row">🎂 Happy Birthday, ${escapeHtml(getNamaPanggilan(p))}!</div>`)
       .join("");
     ulangTahunBar.classList.remove("hidden");
     // Confeti cuma untuk tanggal HARI INI yang sesungguhnya (bukan tanggal
