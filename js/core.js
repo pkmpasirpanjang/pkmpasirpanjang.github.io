@@ -487,9 +487,27 @@ function getNamaPanggilan(p) {
 
 // Daftar pegawai yang ulang tahun pada tanggal (key "yyyy-MM-dd") tertentu -
 // dipakai untuk badge kalender, bar di popup detail tanggal, dan ticker.
+// Pegawai dianggap masih "aktif" untuk fitur Cari & ulang tahun kalau belum
+// punya TanggalSelesai, ATAU bulan TanggalSelesai-nya belum lewat (masih
+// bulan berjalan atau lebih baru). Begitu masuk bulan BERIKUTNYA setelah
+// TanggalSelesai, pegawai ini dianggap sudah tidak ada hubungan lagi
+// dengan puskesmas untuk kedua fitur itu - beda dengan rekap Excel yang
+// tetap harus bisa menampilkan data bulan-bulan saat dia MASIH aktif
+// (itu sudah ditangani terpisah oleh hitungRentangAktifPegawai per periode
+// yang diminta, bukan oleh helper ini).
+function isPegawaiMasihAktifBulanIni(p) {
+  if (!p.TanggalSelesai) return true;
+  const now = new Date();
+  const bulanIniKey = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
+  const selesaiBulanKey = String(p.TanggalSelesai).slice(0, 7);
+  return selesaiBulanKey >= bulanIniKey;
+}
+
 function getPegawaiUlangTahunPadaTanggal(dateKeyStr) {
   const mmdd = dateKeyStr.slice(5);
-  return state.data.pegawai.filter(p => extractBulanTanggalLahir(getTanggalLahirValue(p)) === mmdd);
+  return state.data.pegawai.filter(p =>
+    extractBulanTanggalLahir(getTanggalLahirValue(p)) === mmdd && isPegawaiMasihAktifBulanIni(p)
+  );
 }
 
 // ============================================================

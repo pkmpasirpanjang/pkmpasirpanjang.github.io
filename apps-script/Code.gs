@@ -599,6 +599,37 @@ function updateAbsensi(d) {
   return { _row: d._row, Tanggal: d.Tanggal, Nama: d.Nama, Status: d.Status, Keterangan: d.Keterangan || '' };
 }
 
+// Cegah 1 pegawai tercatat di lebih dari 1 kegiatan luar gedung pada
+// tanggal yang sama - sebelumnya harus disortir manual satu-satu dan
+// tetap kadang lolos. excludeRow (opsional) dipakai saat EDIT, supaya
+// baris yang sedang diedit itu sendiri tidak dianggap bentrok dengan
+// dirinya sendiri.
+function cekBentroKegiatanLuar(sheet, tanggal, namaList, excludeRow) {
+  var existing = sheetToObjects(sheet).filter(function (row) {
+    return String(row.Tanggal) === tanggal && row._row !== excludeRow;
+  });
+  var existingByNama = {};
+  existing.forEach(function (row) { existingByNama[row.Nama] = row.NamaKegiatan; });
+
+  var bentrok = [];
+  var sudahDicekDiForm = {};
+  namaList.forEach(function (nama) {
+    if (existingByNama.hasOwnProperty(nama)) {
+      bentrok.push(nama + ' (sudah ikut "' + existingByNama[nama] + '")');
+    } else if (sudahDicekDiForm[nama]) {
+      bentrok.push(nama + ' (nama ini dipilih dobel di form yang sama)');
+    }
+    sudahDicekDiForm[nama] = true;
+  });
+
+  if (bentrok.length > 0) {
+    throw new Error(
+      'Gagal simpan - 1 pegawai tidak boleh ikut lebih dari 1 kegiatan luar di tanggal yang sama. ' +
+      'Nama berikut sudah tercatat: ' + bentrok.join(', ') + '.'
+    );
+  }
+}
+
 // Menambahkan 1 kegiatan yang sama untuk beberapa pegawai sekaligus.
 // Setiap pegawai jadi 1 baris terpisah di sheet KegiatanLuar.
 function addKegiatanMulti(d) {
@@ -606,6 +637,8 @@ function addKegiatanMulti(d) {
   var sheet = getSheetForYear(tahun, SHEET_KEGIATAN);
   var namaList = d.NamaList || [];
   if (namaList.length === 0) return true;
+
+  cekBentroKegiatanLuar(sheet, String(d.Tanggal), namaList);
 
   // Waktu input dicatat (kolom F) supaya urutan "siapa lebih dulu diinput"
   // tetap bisa dilacak akurat walau baris nanti berpindah posisi akibat
@@ -632,6 +665,7 @@ function addKegiatanMulti(d) {
 function updateKegiatan(d) {
   var tahun = d.Tanggal.substring(0, 4);
   var sheet = getSheetForYear(tahun, SHEET_KEGIATAN);
+  cekBentroKegiatanLuar(sheet, String(d.Tanggal), [d.Nama], d._row);
   sheet.getRange(d._row, 1).setValue(d.NoST || '');
   writeTanggalAsText(sheet, d._row, 2, d.Tanggal);
   sheet.getRange(d._row, 3, 1, 3).setValues([[d.NamaKegiatan, d.Lokasi, d.Nama]]);

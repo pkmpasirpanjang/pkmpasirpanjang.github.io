@@ -262,6 +262,29 @@ function openKegiatanForm(existing) {
   showModal("formKegiatanModal");
 }
 
+// Peringatan CEPAT di sisi form (tanpa perlu ke server) kalau ada nama yang
+// sudah tercatat di kegiatan luar lain pada tanggal yang sama. Ini cuma
+// lapisan tambahan untuk UX - penentu SUNGGUHAN tetap validasi di server
+// (cekBentroKegiatanLuar di Code.gs), karena data yang dipakai di sini bisa
+// saja belum lengkap (baru bulan yang sedang dibuka yang pasti sudah dimuat).
+function cekBentroKegiatanLuarClient(tanggal, namaList, excludeRow) {
+  const existing = state.data.kegiatanLuar.filter(k => k.Tanggal === tanggal && k._row !== excludeRow);
+  const existingByNama = {};
+  existing.forEach(k => { existingByNama[k.Nama] = k.NamaKegiatan; });
+
+  const bentrok = [];
+  const sudahDicek = new Set();
+  namaList.forEach(nama => {
+    if (existingByNama[nama]) {
+      bentrok.push(`${nama} (sudah ikut "${existingByNama[nama]}")`);
+    } else if (sudahDicek.has(nama)) {
+      bentrok.push(`${nama} (dipilih dobel di form ini)`);
+    }
+    sudahDicek.add(nama);
+  });
+  return bentrok;
+}
+
 async function submitKegiatan(e) {
   e.preventDefault();
   const row = document.getElementById("kegiatanRow").value;
@@ -279,11 +302,18 @@ async function submitKegiatan(e) {
   // saat TAMBAH baru, sengaja dibiarkan kosong (status "Menunggu Nomor").
   if (row) basePayload.NoST = document.getElementById("kegiatanNoST").value;
 
+  let result;
   if (row) {
     // EDIT: 1 orang
-    await sendAction("updateKegiatan", {
+    const namaEdit = document.getElementById("kegiatanNama").value;
+    const bentrok = cekBentroKegiatanLuarClient(state.selectedDate, [namaEdit], Number(row));
+    if (bentrok.length) {
+      showToast("Gagal simpan - " + bentrok.join(", ") + " pada tanggal ini.", true);
+      return;
+    }
+    result = await sendAction("updateKegiatan", {
       ...basePayload,
-      Nama: document.getElementById("kegiatanNama").value,
+      Nama: namaEdit,
       _row: Number(row)
     });
   } else {
@@ -293,9 +323,19 @@ async function submitKegiatan(e) {
       showToast("Pilih minimal 1 pegawai.", true);
       return;
     }
-    await sendAction("addKegiatanMulti", { ...basePayload, NamaList: namaList });
+    const bentrok = cekBentroKegiatanLuarClient(state.selectedDate, namaList, null);
+    if (bentrok.length) {
+      showToast("Gagal simpan - " + bentrok.join(", ") + " pada tanggal ini.", true);
+      return;
+    }
+    result = await sendAction("addKegiatanMulti", { ...basePayload, NamaList: namaList });
   }
-  hideModal("formKegiatanModal");
+  // Form sengaja HANYA ditutup kalau simpan benar-benar berhasil - kalau
+  // gagal (termasuk validasi bentrok yang lolos dari pre-check di atas tapi
+  // ditolak server), form tetap terbuka dengan pilihan nama masih utuh,
+  // supaya admin cuma perlu buang 1 nama yang bentrok, bukan mengulang
+  // seluruh input dari awal.
+  if (result) hideModal("formKegiatanModal");
 }
 
 async function deleteKegiatan() {

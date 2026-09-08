@@ -203,7 +203,9 @@ function renderCariResults() {
     el.innerHTML = `<p class="empty-note">Ketik nama pegawai untuk mencari.</p>`;
     return;
   }
-  const hasil = state.data.pegawai.filter(p => p.Nama && p.Nama.toLowerCase().includes(q));
+  const hasil = state.data.pegawai.filter(p =>
+    p.Nama && p.Nama.toLowerCase().includes(q) && isPegawaiMasihAktifBulanIni(p)
+  );
   if (!hasil.length) {
     el.innerHTML = `<p class="empty-note">Tidak ditemukan pegawai dengan nama itu.</p>`;
     return;
