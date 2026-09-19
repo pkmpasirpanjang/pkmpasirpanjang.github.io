@@ -96,6 +96,20 @@ html, body {
   padding: 28px;
 }
 
+/* Bingkai aksen musiman/perayaan hari besar - warnanya di-set inline lewat
+   JS (momen.js) sesuai momen yang sedang aktif, di sini cuma urus animasi
+   transisinya supaya halus saat momen berubah/berakhir. */
+.calendar-panel.momen-aktif {
+  border-width: 3px;
+  border-style: solid;
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+.momen-kop-icon {
+  font-size: 15px;
+  margin-left: 2px;
+  vertical-align: middle;
+}
+
 /* ============================================================
    HEADER / KOP SURAT
    ============================================================ */
@@ -371,6 +385,13 @@ h2 {
   font-weight: 600;
   color: #FFE1EC;
 }
+.ticker-text .ticker-momen {
+  font-weight: 800;
+  font-size: 1.08em;
+  letter-spacing: 0.01em;
+  color: #FFFFFF;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.35);
+}
 .ticker-text.fade-out {
   opacity: 0;
   transform: translateY(4px);
@@ -575,6 +596,7 @@ h2 {
   line-height: 1;
 }
 .cal-badges { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; min-height: 14px; }
+.cal-badge-sorot { font-size: 12px; line-height: 1; }
 .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .dot-absen { background: var(--danger); }
 .dot-kegiatan { background: var(--accent-teal); }
@@ -591,6 +613,41 @@ h2 {
   box-shadow: 0 0 0 3px rgba(79, 195, 232, 0.14);
 }
 .cal-cell.today .cal-daynum { color: var(--accent-sky); }
+
+/* Sel yang tidak berhubungan dengan pegawai yang sedang disorot - dipudarkan,
+   bukan disembunyikan (tetap bisa diklik untuk lihat detail apa adanya). */
+.cal-cell.cal-cell-dimmed { opacity: 0.35; transition: opacity 0.25s ease; }
+.cal-cell:not(.cal-cell-dimmed) { transition: opacity 0.25s ease; }
+
+/* ============================================================
+   CHIP "MENYOROT: [NAMA]"
+   ============================================================ */
+.sorot-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: rgba(72,184,166,0.18);
+  border: 1px solid var(--accent-teal);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-light);
+}
+.sorot-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sorotChipClose {
+  background: none;
+  border: none;
+  color: var(--text-light);
+  font-weight: 800;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+#sorotChipClose:hover { color: var(--danger); }
 .libur-mark { font-size: 13px; line-height: 1; }
 .cal-badge-count {
   font-size: 10px;

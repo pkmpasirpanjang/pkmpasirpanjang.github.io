@@ -33,6 +33,16 @@ function renderCalendar() {
   const kegiatanByDate = groupByDate(state.data.kegiatanLuar, "Tanggal");
   const liburSet = getLiburDatesSet();
 
+  // Kalau sedang menyorot 1 pegawai (lihat sorotPegawaiDiKalender), siapkan
+  // daftar tanggal yang berhubungan dengannya - tanggal LAIN akan dipudarkan.
+  let sorotDates = null;
+  if (state.sorotPegawai) {
+    sorotDates = new Set([
+      ...state.data.absensi.filter(a => a.Nama === state.sorotPegawai).map(a => a.Tanggal),
+      ...state.data.kegiatanLuar.filter(k => k.Nama === state.sorotPegawai).map(k => k.Tanggal)
+    ]);
+  }
+
   const grid = document.getElementById("calendarGrid");
   grid.innerHTML = "";
 
@@ -47,20 +57,70 @@ function renderCalendar() {
   for (let d = 1; d <= daysInMonth; d++) {
     const key = dateKey(y, m, d);
     const isLibur = liburSet.has(key);
+    const isDimmed = sorotDates ? !sorotDates.has(key) : false;
     const cell = document.createElement("div");
-    cell.className = "cal-cell" + (key === todayKey ? " today" : "") + (isLibur ? " libur" : "");
-    const absenCount = (absenByDate[key] || []).length;
-    const kegiatanCount = (kegiatanByDate[key] || []).length;
+    cell.className = "cal-cell" + (key === todayKey ? " today" : "") + (isLibur ? " libur" : "") + (isDimmed ? " cal-cell-dimmed" : "");
+
+    let badgesHtml;
+    if (state.sorotPegawai) {
+      // Mode sorot aktif - ikon spesifik per kategori, HANYA untuk tanggal
+      // yang berhubungan dengan pegawai yang disorot. Tanggal lain (pudar)
+      // sengaja tidak ditampilkan badge apa pun - itu bukan datanya dia.
+      badgesHtml = isDimmed ? "" : getIkonKategoriSorot(state.sorotPegawai, key)
+        .map(ic => `<span class="cal-badge-sorot" title="${ic.label}">${ic.icon}</span>`)
+        .join("");
+    } else {
+      // Tampilan normal (tidak sedang menyorot siapa pun) - TETAP dot+angka seperti sebelumnya.
+      const absenCount = (absenByDate[key] || []).length;
+      const kegiatanCount = (kegiatanByDate[key] || []).length;
+      badgesHtml =
+        (absenCount ? `<span class="cal-badge-count"><i class="dot dot-absen"></i> ${absenCount}</span>` : "") +
+        (kegiatanCount ? `<span class="cal-badge-count"><i class="dot dot-kegiatan"></i> ${kegiatanCount}</span>` : "");
+    }
 
     cell.innerHTML = `
       <div class="cal-daynum">${d}${isLibur ? ' <span class="libur-mark">🎌</span>' : ""}</div>
-      <div class="cal-badges">
-        ${absenCount ? `<span class="cal-badge-count"><i class="dot dot-absen"></i> ${absenCount}</span>` : ""}
-        ${kegiatanCount ? `<span class="cal-badge-count"><i class="dot dot-kegiatan"></i> ${kegiatanCount}</span>` : ""}
-      </div>`;
+      <div class="cal-badges">${badgesHtml}</div>`;
     cell.addEventListener("click", () => openDateModal(key));
     grid.appendChild(cell);
   }
+}
+
+// Ikon per kategori data (dipakai HANYA saat mode sorot 1 pegawai aktif -
+// tampilan kalender utama tetap dot polos seperti biasa, tidak diubah).
+const IKON_KATEGORI_SOROT = {
+  "Sakit": { icon: "🤒", label: "Sakit" },
+  "Izin": { icon: "📄", label: "Izin" },
+  "Cuti": { icon: "🌴", label: "Cuti" },
+  "Alpa/Tanpa Keterangan": { icon: "❓", label: "Tanpa Keterangan" }
+};
+function getIkonKategoriSorot(nama, key) {
+  const hasil = [];
+  const absen = state.data.absensi.find(a => a.Nama === nama && a.Tanggal === key);
+  if (absen && IKON_KATEGORI_SOROT[absen.Status]) hasil.push(IKON_KATEGORI_SOROT[absen.Status]);
+  const adaKegiatan = state.data.kegiatanLuar.some(k => k.Nama === nama && k.Tanggal === key);
+  if (adaKegiatan) hasil.push({ icon: "🧭", label: "Kegiatan Luar Gedung" });
+  return hasil;
+}
+
+// ============================================================
+// SOROT KALENDER UNTUK 1 PEGAWAI (dari kartu Profil Ringkas di tab Cari)
+// ============================================================
+function sorotPegawaiDiKalender(nama) {
+  state.sorotPegawai = nama;
+  document.getElementById("sorotChipText").textContent = `Menyorot: ${nama}`;
+  document.getElementById("sorotChip").classList.remove("hidden");
+  renderCalendar();
+}
+
+function batalSorotPegawai() {
+  state.sorotPegawai = null;
+  document.getElementById("sorotChip").classList.add("hidden");
+  renderCalendar();
+}
+
+function setupSorotChip() {
+  document.getElementById("sorotChipClose").addEventListener("click", batalSorotPegawai);
 }
 
 function getLiburDatesSet() {

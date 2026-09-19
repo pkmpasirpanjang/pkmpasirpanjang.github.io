@@ -472,6 +472,13 @@ function setupProfilModal() {
     refreshProfilRingkas();
   });
   document.getElementById("profilDetailBack").addEventListener("click", hideProfilDetail);
+
+  document.getElementById("profilSorotBtn").addEventListener("click", async () => {
+    const nama = profilState.nama;
+    hideModal("profilModal");
+    await goToTab("kalender");
+    sorotPegawaiDiKalender(nama);
+  });
 }
 
 document.addEventListener("DOMContentLoaded", () => {

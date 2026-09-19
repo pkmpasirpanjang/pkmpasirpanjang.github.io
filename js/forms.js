@@ -509,6 +509,7 @@ function activateAdmin() {
   btn.classList.add("admin-active-state");
   cekTahunIniUntukBanner();
   updateTahunBanner(); // kalau banner sudah tampil (staf biasa lihat sebelum admin login), tombolnya langsung muncul
+  if (typeof applyMomenAksen === "function") applyMomenAksen(); // supaya ?testDate= langsung aktif tanpa reload
 }
 
 // Dipanggil dari submenu tab Admin ("Logout Mode Admin" - lihat nav.js).

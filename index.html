@@ -16,7 +16,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=38">
+<link rel="stylesheet" href="css/style.css?v=40">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body>
@@ -35,7 +35,7 @@
   <div class="kop-text">
     <p class="kop-line1">Dinas Kesehatan Kota Kupang</p>
     <h1 class="kop-line2">UPTD Puskesmas Pasir&nbsp;Panjang</h1>
-    <p class="kop-sub">Dashboard Absensi &amp; Kegiatan Luar&nbsp;Gedung</p>
+    <p class="kop-sub">Dashboard Absensi &amp; Kegiatan Luar&nbsp;Gedung <span id="momenKopIcon" class="momen-kop-icon hidden" title=""></span></p>
   </div>
   <img src="assets/logo-puskesmas.png" alt="Logo Puskesmas Pasir Panjang" class="kop-logo kop-logo-right">
 </header>
@@ -102,6 +102,10 @@
 
   <!-- ============ TAB: KALENDER ============ -->
   <section id="tab-kalender" class="tab-panel active">
+    <div id="sorotChip" class="sorot-chip hidden">
+      <span id="sorotChipText"></span>
+      <button type="button" id="sorotChipClose" aria-label="Batal sorot">✕</button>
+    </div>
     <div class="glass-panel calendar-panel">
       <div class="calendar-header">
         <button id="prevMonthBtn" class="nav-arrow">‹</button>
@@ -371,6 +375,7 @@
       <button class="close-btn js-close-form">✕</button>
     </div>
     <div id="profilIdentity" class="pegawai-id-card"></div>
+    <button type="button" id="profilSorotBtn" class="btn-secondary small">🔍 Sorot di Kalender</button>
 
     <div id="profilMainView">
       <div class="profil-mode-toggle">
@@ -499,12 +504,13 @@
 </footer>
 
 <script src="js/config.js?v=26"></script>
-<script src="js/core.js?v=35"></script>
-<script src="js/calendar.js?v=31"></script>
-<script src="js/forms.js?v=28"></script>
+<script src="js/core.js?v=37"></script>
+<script src="js/calendar.js?v=33"></script>
+<script src="js/forms.js?v=29"></script>
 <script src="js/stats.js?v=27"></script>
 <script src="js/export.js?v=27"></script>
-<script src="js/nav.js?v=4"></script>
+<script src="js/nav.js?v=5"></script>
 <script src="js/weather.js?v=4"></script>
+<script src="js/momen.js?v=2"></script>
 </body>
 </html>

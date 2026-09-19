@@ -24,7 +24,8 @@ const state = {
   tahunBelumAda: null,               // diisi tahun (string) kalau permintaan terakhir gagal karena spreadsheet tahun itu belum dibuat
   tickerItems: [],                   // daftar teks ticker "status kehadiran hari ini" (sudah diacak)
   tickerIndex: 0,                    // index item ticker yang sedang ditampilkan
-  activeTab: "kalender"              // tab-panel yang sedang aktif (dipakai nav.js & refreshDataSetelahSimpan)
+  activeTab: "kalender",              // tab-panel yang sedang aktif (dipakai nav.js & refreshDataSetelahSimpan)
+  sorotPegawai: null                  // nama pegawai yang sedang disorot di kalender (null = normal)
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -101,6 +102,7 @@ function formatTanggalIndo(tglKey) {
 document.addEventListener("DOMContentLoaded", async () => {
   applySocialLinks();
   setupCalendarNav();
+  setupSorotChip();
   setupModals();
   setupAdmin();
   setupExportMenu();
@@ -583,6 +585,15 @@ function rebuildKehadiranTicker() {
   getPegawaiUlangTahunPadaTanggal(key).forEach(p => {
     items.push(`🎂 Selamat ulang tahun, <span class="ticker-nama">${escapeHtml(getNamaPanggilan(p))}</span>!`);
   });
+
+  // Ucapan spesial hari besar - HANYA muncul persis di hari-H momen itu
+  // (bukan sepanjang rentang tema ikon+bingkai kalender), dari momen.js.
+  if (typeof getMomenHariHAktif === "function") {
+    const momenHariIni = getMomenHariHAktif(key);
+    if (momenHariIni) {
+      items.push(`<span class="ticker-momen">${momenHariIni.icon} ${escapeHtml(momenHariIni.ucapanFinal)}</span>`);
+    }
+  }
 
   state.tickerItems = items;
   if (state.tickerIndex === undefined || state.tickerIndex >= items.length) {

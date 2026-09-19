@@ -368,7 +368,18 @@ function getAllDataCached(dari, sampai) {
     // kebetulan lebih besar dari itu (jarang terjadi untuk 1 bulan data),
     // biarkan saja gagal cache-nya, tidak masalah - dashboard tetap jalan
     // normal, cuma tidak dapat manfaat cache untuk permintaan itu.
-    cache.put(cacheKey, JSON.stringify(result), 300); // 5 menit
+    //
+    // Durasi 1 jam (dinaikkan dari 5 menit) - AMAN karena bumpCacheVersion()
+    // di atas sudah membatalkan cache lama SEKETIKA setiap kali ada yang
+    // menyimpan data lewat dashboard ini, jadi durasi yang lebih panjang
+    // tidak pernah membuat data yang ditampilkan jadi basi/ketinggalan -
+    // cuma bikin buka-tutup bulan yang sama berulang kali jauh lebih cepat
+    // (tidak perlu baca ulang sheet yang makin membesar tiap bulan). Kalau
+    // suatu saat Anda mengedit data LANGSUNG di Google Sheets (bukan lewat
+    // dashboard), perubahan itu bisa butuh sampai 1 jam untuk muncul di
+    // dashboard - kalau itu terjadi dan mau lihat hasilnya seketika, jalankan
+    // fungsi bumpCacheVersion() sekali lewat tombol Run di editor ini.
+    cache.put(cacheKey, JSON.stringify(result), 3600);
   } catch (e) {
     // sengaja dibiarkan - lihat penjelasan di atas
   }
