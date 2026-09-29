@@ -137,14 +137,49 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Data "hari ini" bisa berubah dari perangkat admin LAIN (bukan lewat
   // simpan di perangkat ini) - jadi selain nge-refresh saat kita sendiri
-  // simpan, ticker juga disegarkan diam-diam tiap beberapa menit supaya
-  // tetap terasa "real-time" tanpa perlu reload halaman manual. Ringan
-  // untuk server karena tetap lewat cache 5 menit di Code.gs.
+  // simpan, kalender+ticker juga disegarkan otomatis tiap 30 detik supaya
+  // perubahan dari HP lain terasa "real-time" tanpa perlu reload manual.
+  // PENTING: pakai refreshCurrentMonthPaksa() (BUKAN ensureMonthsLoaded) -
+  // ensureMonthsLoaded sengaja SKIP kalau bulan ini sudah pernah dimuat
+  // sesi ini (itu bagus untuk navigasi bulan biar instan), tapi itu juga
+  // berarti dipakai untuk polling berkala jadi tidak pernah benar-benar
+  // menarik data baru - persis sebabnya perubahan dari HP lain sebelumnya
+  // butuh waktu sangat lama (atau tidak pernah) sampai ke sini walau sudah
+  // reload berkali-kali dalam sesi yang sama.
   setInterval(() => {
-    ensureMonthsLoaded([currentMonthKey()], { silent: true })
-      .then(() => renderSectionSafely("Ticker kehadiran", rebuildKehadiranTicker));
-  }, 180000); // 3 menit
+    refreshCurrentMonthPaksa().then((berhasil) => {
+      if (berhasil) {
+        renderSectionSafely("Kalender", renderCalendar);
+        renderSectionSafely("Ticker kehadiran", rebuildKehadiranTicker);
+      }
+    });
+  }, 30000); // 30 detik
 });
+
+// Selalu mengambil ulang data bulan yang SEDANG ditampilkan di kalender,
+// TANPA memeriksa state.loadedMonths - beda dari ensureMonthsLoaded yang
+// sengaja melewati bulan yang sudah pernah dimuat (bagus untuk navigasi
+// bulan manual, instan). Fungsi ini khusus dipakai untuk penyegaran
+// berkala otomatis, supaya perubahan dari perangkat admin lain benar-benar
+// tertarik masuk, bukan cuma dianggap "sudah ada, skip" selamanya.
+async function refreshCurrentMonthPaksa() {
+  const mk = currentMonthKey();
+  const dari = firstDayOfMonthKey(mk);
+  const sampai = lastDayOfMonthKey(mk);
+  try {
+    const res = await fetch(`${CONFIG.API_URL}?action=data&dari=${dari}&sampai=${sampai}&_ts=${Date.now()}`, { cache: "no-store" });
+    const json = await res.json();
+    if (json.error) return false;
+    mergeFetchedData(json, dari, sampai);
+    state.loadedMonths.add(mk);
+    saveCachedData();
+    return true;
+  } catch (err) {
+    // Diam-diam gagal - ini polling di belakang layar, jangan ganggu user
+    // dengan toast error tiap kali koneksi sempat putus sebentar.
+    return false;
+  }
+}
 
 function currentMonthKey() {
   return monthKeyOf(state.currentYear, state.currentMonth);
