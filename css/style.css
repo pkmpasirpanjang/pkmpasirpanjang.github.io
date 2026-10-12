@@ -1564,7 +1564,12 @@ form input::placeholder { color: rgba(245,247,244,0.45); }
 @media (max-width: 560px) {
   .kop { gap: 10px; padding: 14px 10px; }
   .kop-logo { height: 44px; width: 44px; }
-  .kop-sub { font-size: 11px; }
+  /* Subjudul kop dipaksa 1 baris di HP: ukuran huruf mengikuti lebar layar
+     (lebar layar dikurangi logo + jarak, dibagi ±27 em teks). */
+  .kop-sub {
+    font-size: max(8.5px, calc((100vw - 128px) / 27));
+    white-space: nowrap;
+  }
   .glass-panel { padding: 14px; }
   .stat-row { grid-template-columns: 90px 1fr 44px; font-size: 12px; }
   .calendar-grid { gap: 4px; }
